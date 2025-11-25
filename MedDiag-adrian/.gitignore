@@ -1,0 +1,20 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.env
+
+
+# Ignorar configuración de Jupyter y VSCode
+.ipynb_checkpoints/
+.vscode/
+*.code-workspace
+
+# Ignorar archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Ignorar logs
+*.log
