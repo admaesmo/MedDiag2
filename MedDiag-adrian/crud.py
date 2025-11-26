@@ -1,4 +1,3 @@
-# crud.py
 from sqlalchemy.orm import Session
 from models import User, Disease, Diagnosis, DiagnosisDetail
 
@@ -63,3 +62,55 @@ def create_diagnosis_with_single_candidate(
     db.add(detail)
 
     return diagnosis
+
+# 4) Obtener diagnósticos recientes (para historial general)
+def get_recent_diagnoses(db: Session, limit: int = 50):
+    """
+    Retorna los diagnósticos más recientes, incluyendo datos del usuario
+    y de la enfermedad.
+    """
+    query = (
+        db.query(
+            Diagnosis.id,
+            Diagnosis.generated_at,
+            Diagnosis.status,
+            Diagnosis.final_description,
+            User.name.label("user_name"),
+            User.email.label("user_email"),
+            Disease.name.label("disease_name"),
+            Disease.disease_code,
+            DiagnosisDetail.probability
+        )
+        .join(User, Diagnosis.user_id == User.id)
+        .join(DiagnosisDetail, DiagnosisDetail.diagnosis_id == Diagnosis.id)
+        .join(Disease, DiagnosisDetail.disease_id == Disease.id)
+        .order_by(Diagnosis.generated_at.desc())
+        .limit(limit)
+    )
+    return query.all()
+
+# 5) Obtener diagnósticos filtrados por correo de usuario
+def get_diagnoses_by_user_email(db: Session, email: str, limit: int = 50):
+    """
+    Retorna diagnósticos asociados a un correo concreto.
+    """
+    query = (
+        db.query(
+            Diagnosis.id,
+            Diagnosis.generated_at,
+            Diagnosis.status,
+            Diagnosis.final_description,
+            User.name.label("user_name"),
+            User.email.label("user_email"),
+            Disease.name.label("disease_name"),
+            Disease.disease_code,
+            DiagnosisDetail.probability
+        )
+        .join(User, Diagnosis.user_id == User.id)
+        .join(DiagnosisDetail, DiagnosisDetail.diagnosis_id == Diagnosis.id)
+        .join(Disease, DiagnosisDetail.disease_id == Disease.id)
+        .filter(User.email == email)
+        .order_by(Diagnosis.generated_at.desc())
+        .limit(limit)
+    )
+    return query.all()

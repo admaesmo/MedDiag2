@@ -10,7 +10,9 @@ from models import Base
 from crud import (
     get_or_create_user,
     seed_default_diseases,
-    create_diagnosis_with_single_candidate
+    create_diagnosis_with_single_candidate,
+    get_recent_diagnoses,
+    get_diagnoses_by_user_email,
 )
 
 # ------------------------------------------------------------
@@ -63,11 +65,14 @@ with st.sidebar:
 
     selected = option_menu(
         t["MultipleDPS"],
-        [t["diabetes_prediction"],
-         t["heart_disease_prediction"],
-         t["parkinsons_prediction"]],
+        [
+            t["diabetes_prediction"],
+            t["heart_disease_prediction"],
+            t["parkinsons_prediction"],
+            t["history"],  # NUEVO: opción de historial
+        ],
         menu_icon="hospital-fill",
-        icons=["activity", "heart", "person"],
+        icons=["activity", "heart", "person", "clock-history"],
         default_index=0
     )
 
@@ -156,7 +161,6 @@ def save_diagnosis(disease_code: str, prediction_result, message: str):
 
 # ------------------------------------------------------------
 # CONFIGURACIÓN DE CAMPOS Y VALORES POR DEFECTO
-# (reducción de campos visibles)
 # ------------------------------------------------------------
 
 # Diabetes: orden estándar Pima
@@ -211,7 +215,6 @@ PARK_FEATURE_ORDER = [
 ]
 
 PARK_DEFAULTS = {
-    # Valores aproximados, típicos dentro de rangos razonables
     "flo": 100.0,
     "jitter_abs": 0.0001,
     "RAP": 0.003,
@@ -301,7 +304,6 @@ if selected == t["diabetes_prediction"]:
         submit_diab = st.form_submit_button(t["button_diabetes"])
 
     if submit_diab:
-        # Construir vector completo con visibles + defaults
         features = {
             "Pregnancies": float(pregnancies),
             "Glucose": float(glucose),
@@ -622,7 +624,7 @@ elif selected == t["parkinsons_prediction"]:
         st.markdown("---")
         st.success(parkinsons_diagnosis)
         st.caption(
-            "Este resultado es orientativo y no reemplaza la valoración de un neurólogo."
+            "⚠️ Este resultado es orientativo y no reemplaza la valoración de un neurólogo."
         )
 
         save_diagnosis(
@@ -630,3 +632,50 @@ elif selected == t["parkinsons_prediction"]:
             {"model": parkinsons_model, "input": user_input, "value": parkinsons_prediction[0]},
             parkinsons_diagnosis,
         )
+
+# ========== HISTORIAL ==========
+elif selected == t["history"]:
+    st.title(t["history"])
+    st.markdown(t["history_intro"])
+
+    with st.form("history_form"):
+        filter_email = st.text_input(t["history_filter_email"])
+        limit = st.slider(
+            "Número máximo de registros a mostrar",
+            min_value=10,
+            max_value=200,
+            value=50,
+            step=10,
+            help="Controla cuántos diagnósticos se muestran en la tabla."
+        )
+        submit_history = st.form_submit_button(t["history_show_button"])
+
+    if submit_history:
+        with SessionLocal() as db:
+            if filter_email.strip():
+                rows = get_diagnoses_by_user_email(
+                    db, filter_email.strip(), limit=limit
+                )
+            else:
+                rows = get_recent_diagnoses(db, limit=limit)
+
+        if not rows:
+            st.info(t["history_empty"])
+        else:
+            # Construir una lista de diccionarios para mostrar en tabla
+            data = []
+            for r in rows:
+                data.append(
+                    {
+                        "ID diagnóstico": r.id,
+                        "Fecha / hora": r.generated_at,
+                        "Paciente": r.user_name,
+                        "Correo": r.user_email,
+                        "Enfermedad": r.disease_name,
+                        "Código": r.disease_code,
+                        "Probabilidad": float(r.probability),
+                        "Estado": r.status,
+                    }
+                )
+
+            st.dataframe(data, use_container_width=True)
