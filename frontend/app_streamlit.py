@@ -15,12 +15,12 @@ from flags import get_flag  # noqa: E402
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 # ------------------------------------------------------------
-# CONFIGURACIÓN INICIAL
+# CONFIGURACION INICIAL
 # ------------------------------------------------------------
-st.set_page_config(page_title="Health Assistant", layout="wide", page_icon="⚕️")
+st.set_page_config(page_title="Health Assistant", layout="wide", page_icon="MD")
 
 # ------------------------------------------------------------
-# SIDEBAR DE NAVEGACIÓN
+# SIDEBAR DE NAVEGACION
 # ------------------------------------------------------------
 with st.sidebar:
     st.markdown(
@@ -89,12 +89,11 @@ def api_get(path: str, params: dict | None = None):
         return None, str(exc)
 
 
-def patient_payload(name, email, phone, age, gender):
+def patient_payload(name, email, phone, gender):
     return {
         "name": name,
         "email": email or None,
         "phone_number": phone or None,
-        "age": int(age) if age is not None else None,
         "gender": gender,
     }
 
@@ -163,22 +162,22 @@ if selected == t["welcome"]:
 # ------------------------------------------------------------
 # FORMULARIO DE PACIENTE (SE COMPARTE)
 # ------------------------------------------------------------
-st.subheader("Datos básicos del paciente")
-st.caption("Estos datos se usan para registrar el resultado en la base de datos.")
+st.subheader(t["patient_data_title"])
+st.caption(t["patient_data_caption"])
 
 col_u1, col_u2, col_u3 = st.columns(3)
 with col_u1:
-    user_name = st.text_input("Nombre del paciente", value="Paciente Demo")
+    user_name = st.text_input(t["patient_name"], value="Paciente Demo")
 with col_u2:
-    user_email = st.text_input("Correo (opcional)")
+    user_email = st.text_input(t["patient_email"])
 with col_u3:
-    user_phone = st.text_input("Teléfono (opcional)")
+    user_phone = st.text_input(t["patient_phone"])
 
 col_u4, col_u5 = st.columns(2)
 with col_u4:
-    user_age = st.number_input("Edad", min_value=0, max_value=120, value=30)
+    user_gender = st.selectbox(t["patient_gender"], options=["M", "F", "O"])
 with col_u5:
-    user_gender = st.selectbox("Género", options=["M", "F", "O"])
+    st.write("")  # placeholder para mantener la grilla equilibrada
 
 # Defaults used to fill missing optional variables
 DIABETES_DEFAULTS = {
@@ -212,7 +211,7 @@ PARK_DEFAULTS = {
 }
 
 # ------------------------------------------------------------
-# BLOQUES DE PREDICCIÓN
+# BLOQUES DE PREDICCION
 # ------------------------------------------------------------
 
 if selected == t["diabetes_prediction"]:
@@ -222,60 +221,60 @@ if selected == t["diabetes_prediction"]:
         col1, col2 = st.columns(2)
         with col1:
             pregnancies = st.number_input(
-                "Numero de embarazos",
+                t["pregnancies"],
                 min_value=0,
                 max_value=20,
                 value=0,
-                help="Cantidad de embarazos que ha tenido la persona (0 si no aplica).",
+                help=t["help_pregnancies"],
             )
         with col2:
             glucose = st.number_input(
-                "Nivel de glucosa",
+                t["glucose_level"],
                 min_value=0,
                 max_value=300,
                 value=110,
-                help="Glucosa en sangre en ayunas (mg/dl).",
+                help=t["help_glucose"],
             )
 
         col3, col4 = st.columns(2)
         with col3:
             blood_pressure = st.number_input(
-                "Presion arterial",
+                t["blood_pressure"],
                 min_value=0,
                 max_value=200,
                 value=80,
-                help="Presion arterial diastolica (mm Hg).",
+                help=t["help_blood_pressure"],
             )
         with col4:
             bmi = st.number_input(
-                "Indice de masa corporal",
+                t["bmi"],
                 min_value=10.0,
                 max_value=60.0,
                 value=25.0,
                 step=0.1,
-                help="Peso (kg) dividido por talla^2 (m).",
+                help=t["help_bmi"],
             )
 
         col5, col6 = st.columns(2)
         with col5:
             dpf = st.number_input(
-                "Funcion de herencia de la diabetes",
+                t["diabetes_pedigree_function"],
                 min_value=0.0,
                 max_value=3.0,
                 value=0.5,
                 step=0.01,
-                help="Carga hereditaria de diabetes en la familia (0-3).",
+                help=t["help_dpf"],
             )
         with col6:
             age = st.number_input(
-                "Edad",
+                t["age"],
                 min_value=18,
                 max_value=100,
                 value=40,
-                help="Edad del paciente en anos.",
+                help=t["help_age"],
             )
 
-        submit_diab = st.form_submit_button("Resultado del test de diabetes")
+        submit_diab = st.form_submit_button(t["button_diabetes"])
 
     if submit_diab:
         features = {
@@ -288,7 +287,7 @@ if selected == t["diabetes_prediction"]:
             "DiabetesPedigreeFunction": float(dpf),
             "Age": float(age),
         }
-        payload = {"patient": patient_payload(user_name, user_email, user_phone, user_age, user_gender), "features": features}
+        payload = {"patient": patient_payload(user_name, user_email, user_phone, user_gender), "features": features}
         data, err = api_post("/predict/diabetes", payload)
         if err:
             st.error(f"Error al llamar la API: {err}")
@@ -303,86 +302,86 @@ elif selected == t["heart_disease_prediction"]:
         col1, col2 = st.columns(2)
         with col1:
             age = st.number_input(
-                "Edad",
+                t["age"],
                 min_value=18,
                 max_value=100,
                 value=50,
-                help="Edad del paciente en anos.",
+                help=t["help_age"],
             )
         with col2:
             sex_str = st.selectbox(
-                "Sexo biologico",
-                options=["Masculino", "Femenino"],
-                help="Sexo biologico registrado. Se codifica 1=M, 0=F.",
+                t["sex"],
+                options=[t["sex_option_male"], t["sex_option_female"]],
+                help=t["help_sex"],
             )
-            sex = 1.0 if sex_str == "Masculino" else 0.0
+            sex = 1.0 if sex_str == t["sex_option_male"] else 0.0
 
         col3, col4 = st.columns(2)
         with col3:
             cp_str = st.selectbox(
-                "Tipo de dolor en el pecho",
+                t["cp"],
                 options=[
-                    "0 - Tipico anginoso",
-                    "1 - Atipico anginoso",
-                    "2 - No anginoso",
-                    "3 - Asintomatico",
+                    t["cp_option_0"],
+                    t["cp_option_1"],
+                    t["cp_option_2"],
+                    t["cp_option_3"],
                 ],
-                help="0: tipico, 1: atipico, 2: no anginoso, 3: asintomatico.",
+                help=t["help_cp"],
             )
             cp = float(cp_str.split(" - ")[0])
         with col4:
             trestbps = st.number_input(
-                "Presion arterial en reposo",
+                t["trestbps"],
                 min_value=80,
                 max_value=220,
                 value=130,
-                help="Presion arterial en reposo (mm Hg).",
+                help=t["help_trestbps"],
             )
 
         col5, col6 = st.columns(2)
         with col5:
             chol = st.number_input(
-                "Colesterol serico (mg/dl)",
+                t["chol"],
                 min_value=100,
                 max_value=600,
                 value=220,
-                help="Colesterol total en ayunas (mg/dl).",
+                help=t["help_chol"],
             )
         with col6:
             thalach = st.number_input(
-                "Frecuencia cardiaca maxima",
+                t["thalach"],
                 min_value=60,
                 max_value=220,
                 value=150,
-                help="Frecuencia cardiaca maxima alcanzada en esfuerzo.",
+                help=t["help_thalach"],
             )
 
         col7, col8 = st.columns(2)
         with col7:
             exang_str = st.selectbox(
-                "Angina inducida por ejercicio",
-                options=["No", "Si"],
-                help="Dolor toracico que aparece o empeora con ejercicio.",
+                t["exang"],
+                options=[t["exang_option_no"], t["exang_option_yes"]],
+                help=t["help_exang"],
             )
-            exang = 1.0 if exang_str == "Si" else 0.0
+            exang = 1.0 if exang_str == t["exang_option_yes"] else 0.0
         with col8:
             oldpeak = st.number_input(
-                "Depresion del ST inducida por ejercicio",
+                t["oldpeak"],
                 min_value=0.0,
                 max_value=10.0,
                 value=1.0,
                 step=0.1,
-                help="Caida del segmento ST respecto a reposo.",
+                help=t["help_oldpeak"],
             )
 
         ca = st.number_input(
-            "Vasos principales coloreados por fluoroscopia",
+            t["ca"],
             min_value=0,
             max_value=4,
             value=0,
-            help="Numero de vasos principales coloreados (0-3).",
+            help=t["help_ca"],
         )
-        submit_heart = st.form_submit_button("Resultado del test de enfermedad cardiaca")
+        submit_heart = st.form_submit_button(t["button_heart"])
 
     if submit_heart:
         features = {
@@ -400,7 +399,7 @@ elif selected == t["heart_disease_prediction"]:
             "ca": float(ca),
             "thal": HEART_DEFAULTS["thal"],
         }
-        payload = {"patient": patient_payload(user_name, user_email, user_phone, user_age, user_gender), "features": features}
+        payload = {"patient": patient_payload(user_name, user_email, user_phone, user_gender), "features": features}
         data, err = api_post("/predict/heart", payload)
         if err:
             st.error(f"Error al llamar la API: {err}")
@@ -415,82 +414,82 @@ elif selected == t["parkinsons_prediction"]:
         col1, col2, col3 = st.columns(3)
         with col1:
             fo = st.number_input(
-                "Frecuencia media (Hz)",
+                t["fo"],
                 min_value=50.0,
                 max_value=300.0,
                 value=150.0,
                 step=1.0,
-                help="Frecuencia fundamental media de la voz (Hz).",
+                help=t["help_fo"],
             )
         with col2:
             fhi = st.number_input(
-                "Frecuencia maxima (Hz)",
+                t["fhi"],
                 min_value=50.0,
                 max_value=400.0,
                 value=200.0,
                 step=1.0,
-                help="Frecuencia maxima de la voz (Hz).",
+                help=t["help_fhi"],
             )
         with col3:
             jitter_percent = st.number_input(
-                "Variacion del tono (%)",
+                t["jitter_percent"],
                 min_value=0.0,
                 max_value=1.0,
                 value=0.01,
                 step=0.001,
-                help="Variacion relativa del tono de un ciclo a otro (%).",
+                help=t["help_jitter_percent"],
             )
 
         col4, col5, col6 = st.columns(3)
         with col4:
             shimmer = st.number_input(
-                "Variacion de la amplitud",
+                t["shimmer"],
                 min_value=0.0,
                 max_value=1.0,
                 value=0.03,
                 step=0.001,
-                help="Variacion relativa de la amplitud de un ciclo a otro.",
+                help=t["help_shimmer"],
             )
         with col5:
             nhr = st.number_input(
-                "Relacion ruido/armonicos",
+                t["NHR"],
                 min_value=0.0,
                 max_value=1.0,
                 value=0.03,
                 step=0.001,
-                help="Relacion ruido/armonicos de la voz.",
+                help=t["help_nhr"],
             )
         with col6:
             hnr = st.number_input(
-                "Relacion armonicos/ruido (dB)",
+                t["HNR"],
                 min_value=0.0,
                 max_value=50.0,
                 value=20.0,
                 step=0.1,
-                help="Relacion armonicos/ruido en dB (mayor es mejor).",
+                help=t["help_hnr"],
             )
 
         col7, col8 = st.columns(2)
         with col7:
             rpde = st.number_input(
-                "Entropia de recurrencia (RPDE)",
+                t["RPDE"],
                 min_value=0.0,
                 max_value=1.0,
                 value=0.5,
                 step=0.01,
-                help="Medida de complejidad/no linealidad en la voz.",
+                help=t["help_rpde"],
             )
         with col8:
             ppe = st.number_input(
-                "Entropia del tono (PPE)",
+                t["PPE"],
                 min_value=0.0,
                 max_value=1.0,
                 value=0.3,
                 step=0.01,
-                help="Irregularidad del periodo del tono (entropia).",
+                help=t["help_ppe"],
             )
 
-        submit_park = st.form_submit_button("Resultado del test de Parkinson")
+        submit_park = st.form_submit_button(t["button_parkinson"])
 
     if submit_park:
         features = {
@@ -517,7 +516,7 @@ elif selected == t["parkinsons_prediction"]:
             "D2": PARK_DEFAULTS["D2"],
             "PPE": float(ppe),
         }
-        payload = {"patient": patient_payload(user_name, user_email, user_phone, user_age, user_gender), "features": features}
+        payload = {"patient": patient_payload(user_name, user_email, user_phone, user_gender), "features": features}
         data, err = api_post("/predict/parkinson", payload)
         if err:
             st.error(f"Error al llamar la API: {err}")
@@ -535,7 +534,7 @@ elif selected == t["history"]:
     with st.form("history_form"):
         filter_name = st.text_input(t["history_filter_name"])
         filter_email = st.text_input(t["history_filter_email"])
-        limit = st.slider("Número máximo de registros a mostrar", min_value=10, max_value=200, value=50, step=10)
+        limit = st.slider(t["history_limit_label"], min_value=10, max_value=200, value=50, step=10)
         submit_history = st.form_submit_button(t["history_show_button"])
 
     if submit_history:

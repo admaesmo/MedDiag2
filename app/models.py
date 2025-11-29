@@ -20,7 +20,6 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, nullable=False)
     phone_number = Column(Text)
-    age = Column(Integer, CheckConstraint("age BETWEEN 0 AND 120"))
     gender = Column(String(1), CheckConstraint("gender IN ('M','F','O')"))
     email = Column(Text, unique=True)
 

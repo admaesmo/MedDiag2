@@ -7,7 +7,6 @@ def get_or_create_user(
     db: Session,
     name: str,
     email: str | None = None,
-    age: int | None = None,
     gender: str | None = None,
     phone_number: str | None = None,
 ) -> User:
@@ -19,7 +18,6 @@ def get_or_create_user(
         user = User(
             name=name or "Paciente sin nombre",
             email=email,
-            age=age,
             gender=gender,
             phone_number=phone_number,
         )

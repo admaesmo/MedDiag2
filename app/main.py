@@ -39,7 +39,6 @@ app.add_middleware(
 class Patient(BaseModel):
     name: str = Field(..., example="Paciente Demo")
     email: Optional[str] = Field(None, example="demo@meddiag.com")
-    age: Optional[int] = Field(None, ge=0, le=120, example=40)
     gender: Optional[str] = Field(None, pattern="^(M|F|O)$", example="M")
     phone_number: Optional[str] = Field(None, example="+57 3000000000")
 
@@ -91,7 +90,6 @@ def create_user(patient: Patient, db: Session = Depends(get_db)):
         db,
         name=patient.name,
         email=patient.email,
-        age=patient.age,
         gender=patient.gender,
         phone_number=patient.phone_number,
     )
@@ -150,7 +148,6 @@ def _save_and_response(
         db,
         name=patient.name,
         email=patient.email,
-        age=patient.age,
         gender=patient.gender,
         phone_number=patient.phone_number,
     )
