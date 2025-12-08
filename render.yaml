@@ -1,10 +1,10 @@
 services:
   - type: web
     name: meddiag-api
-    env: docker
+    env: python
     plan: free
-    dockerfilePath: ./Dockerfile
-    startCommand: "sh -c 'uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}'"
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -17,10 +17,10 @@ services:
 
   - type: web
     name: meddiag-streamlit
-    env: docker
+    env: python
     plan: free
-    dockerfilePath: ./Dockerfile
-    startCommand: "sh -c 'cd /app/frontend && streamlit run app_streamlit.py --server.port ${PORT:-10000} --server.address 0.0.0.0'"
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "cd frontend && streamlit run app_streamlit.py --server.port $PORT --server.address 0.0.0.0"
     envVars:
       - key: API_BASE_URL
         value: "https://meddiag-api.onrender.com"

@@ -1,7 +1,5 @@
 import os
 import sys
-import tempfile
-
 import requests
 import streamlit as st
 from streamlit_option_menu import option_menu
@@ -98,38 +96,6 @@ def patient_payload(name, email, phone, gender):
         "phone_number": phone or None,
         "gender": gender,
     }
-
-
-def extract_parkinson_features_from_audio(audio_data):
-    """Extract 22 phonation features using DisVoice; returns (dict, error)."""
-    try:
-        from disvoice.phonation import Phonation
-        from scipy.io import wavfile
-        import numpy as np
-    except Exception as exc:  # ImportError or missing native deps
-        return None, f"No se pudo importar disvoice/scipy ({exc}). Instala disvoice y sus dependencias nativas."
-
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp.write(audio_data.getbuffer())
-            audio_path = tmp.name
-
-        sr, _signal = wavfile.read(audio_path)
-        phonation = Phonation()
-        feats = phonation.extract_features_file(audio_path, sr)
-
-        # Normalize shape to 1D
-        feats_arr = feats
-        if hasattr(feats, "shape") and getattr(feats, "ndim", 1) > 1:
-            feats_arr = feats[0]
-
-        if len(feats_arr) < len(PARK_FEATURE_ORDER):
-            return None, f"Se obtuvieron {len(feats_arr)} features, se esperaban {len(PARK_FEATURE_ORDER)}."
-
-        features_dict = {name: float(feats_arr[idx]) for idx, name in enumerate(PARK_FEATURE_ORDER)}
-        return features_dict, None
-    except Exception as exc:
-        return None, f"Error extrayendo features con DisVoice: {exc}"
 
 
 # ------------------------------------------------------------
@@ -243,30 +209,6 @@ PARK_DEFAULTS = {
     "spread2": 0.5,
     "D2": 2.0,
 }
-PARK_FEATURE_ORDER = [
-    "fo",
-    "fhi",
-    "flo",
-    "jitter_percent",
-    "jitter_abs",
-    "RAP",
-    "PPQ",
-    "DDP",
-    "shimmer",
-    "shimmer_dB",
-    "APQ3",
-    "APQ5",
-    "APQ",
-    "DDA",
-    "NHR",
-    "HNR",
-    "RPDE",
-    "DFA",
-    "spread1",
-    "spread2",
-    "D2",
-    "PPE",
-]
 
 # ------------------------------------------------------------
 # BLOQUES DE PREDICCION
@@ -467,33 +409,6 @@ elif selected == t["heart_disease_prediction"]:
 
 elif selected == t["parkinsons_prediction"]:
     st.title(t["title_parkinson"])
-
-    st.markdown("#### " + t["parkinson_audio_title"])
-    audio_data = st.audio_input(t["parkinson_audio_label"], key="parkinson_audio_input")
-    if audio_data is not None:
-        with st.spinner(t["parkinson_audio_spinner"]):
-            audio_features, audio_err = extract_parkinson_features_from_audio(audio_data)
-        if audio_err:
-            st.error(audio_err)
-        else:
-            st.success(t["parkinson_audio_success"])
-            st.dataframe(
-                [{"feature": k, "valor": v} for k, v in audio_features.items()],
-                use_container_width=True,
-            )
-            if st.button(t["parkinson_audio_predict"], key="parkinson_audio_predict_btn"):
-                payload = {
-                    "patient": patient_payload(user_name, user_email, user_phone, user_gender),
-                    "features": audio_features,
-                }
-                data, err = api_post("/predict/parkinson", payload)
-                if err:
-                    st.error(f"Error al llamar la API: {err}")
-                else:
-                    st.success(data["message"])
-                    st.caption("Este resultado es orientativo y no reemplaza la valoracion de un neurologo.")
-
-    st.markdown("#### " + t["parkinson_manual_title"])
 
     with st.form("parkinson_form"):
         col1, col2, col3 = st.columns(3)
