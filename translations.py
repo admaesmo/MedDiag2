@@ -120,6 +120,54 @@ translations = {
         "history_limit_label": "Numero maximo de registros a mostrar",
         "history_show_button": "Mostrar historial",
         "history_empty": "Aun no hay diagnosticos registrados.",
+
+        # RECOMENDACIONES MÉDICAS (AÑADIDAS)
+        "positive_heart_reco": """
+**Recomendaciones médicas para riesgo cardíaco detectado:**
+- Consulte su cardiólogo lo antes posible.
+- Controle su presión arterial semanalmente.
+- Reduzca el consumo de sal y alimentos grasos.
+- Realice caminatas de 20–30 min al día.
+- Si fuma, busque un plan para dejar de fumar.
+- Controle colesterol y triglicéridos.
+""",
+        "negative_heart_reco": """
+**No se observan indicios de enfermedad cardíaca.**
+Recomendaciones:
+- Mantenga una dieta equilibrada.
+- Realice actividad física regularmente.
+- Siga controles médicos anuales.
+""",
+        "positive_parkinson_reco": """
+**Recomendaciones ante posible presencia de Parkinson:**
+- Consulte a un neurólogo para confirmación del diagnóstico.
+- Mantenga actividad física supervisada (fisioterapia).
+- Evite estrés excesivo.
+- Mantenga chequeos periódicos para evaluar progresión.
+""",
+        "negative_parkinson_reco": """
+**No se detectan signos compatibles con Parkinson.**
+Recomendaciones:
+- Mantener hábitos saludables.
+- Dormir bien y realizar actividad física suave.
+""",
+        "positive_diabetes_reco": """
+**Recomendaciones ante posible presencia de Diabetes:**
+- Consulte a un endocrinólogo para una evaluación completa.
+- Realice control estricto y regular de los niveles de glucosa.
+- Adopte una alimentación baja en azúcares y carbohidratos simples.
+- Evite bebidas azucaradas y alimentos ultraprocesados.
+- Realice actividad física al menos 150 minutos por semana.
+- Controle el peso, la presión arterial y los niveles de colesterol.
+""",
+        "negative_diabetes_reco": """
+**No se detectan signos compatibles con Diabetes.**
+Recomendaciones:
+- Mantener una alimentación balanceada rica en frutas, verduras y proteína magra.
+- Evitar el consumo excesivo de azúcar y grasas saturadas.
+- Realizar actividad física regular.
+- Controlar los niveles de glucosa al menos una vez al año.
+"""
     },
     "en": {
         # Navigation and welcome
@@ -242,5 +290,53 @@ translations = {
         "history_limit_label": "Max records to show",
         "history_show_button": "Show history",
         "history_empty": "No diagnoses have been stored yet.",
+
+        # RECOMENDACIONES MÉDICAS (AÑADIDAS)
+        "positive_heart_reco": """
+**Medical recommendations for detected heart risk:**
+- Consult your cardiologist as soon as possible.
+- Check your blood pressure weekly.
+- Reduce consumption of salt and fatty foods.
+- Take 20–30 min walks daily.
+- If you smoke, seek a plan to quit smoking.
+- Control cholesterol and triglycerides.
+""",
+        "negative_heart_reco": """
+**No signs of heart disease observed.**
+Recommendations:
+- Maintain a balanced diet.
+- Exercise regularly.
+- Follow annual medical check-ups.
+""",
+        "positive_parkinson_reco": """
+**Recommendations for possible presence of Parkinson's:**
+- Consult a neurologist for diagnosis confirmation.
+- Maintain supervised physical activity (physiotherapy).
+- Avoid excessive stress.
+- Maintain periodic check-ups to assess progression.
+""",
+        "negative_parkinson_reco": """
+**No signs compatible with Parkinson's detected.**
+Recommendations:
+- Maintain healthy habits.
+- Sleep well and perform gentle physical activity.
+""",
+        "positive_diabetes_reco": """
+**Recommendations for possible presence of Diabetes:**
+- Consult an endocrinologist for a complete evaluation.
+- Perform strict and regular control of glucose levels.
+- Adopt a diet low in sugars and simple carbohydrates.
+- Avoid sugary drinks and ultra-processed foods.
+- Exercise at least 150 minutes per week.
+- Control weight, blood pressure, and cholesterol levels.
+""",
+        "negative_diabetes_reco": """
+**No signs compatible with Diabetes detected.**
+Recommendations:
+- Maintain a balanced diet rich in fruits, vegetables, and lean protein.
+- Avoid excessive consumption of sugar and saturated fats.
+- Perform regular physical activity.
+- Control glucose levels at least once a year.
+"""
     },
 }

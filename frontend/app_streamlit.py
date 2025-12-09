@@ -292,7 +292,15 @@ if selected == t["diabetes_prediction"]:
         if err:
             st.error(f"Error al llamar la API: {err}")
         else:
-            st.success(data["message"])
+            # AHORA VERIFICAMOS EL RESULTADO (data["prediction"] es 1 o 0)
+            if data["prediction"] == 1:
+               # Caso POSITIVO (RIESGO)
+              st.error(data["message"]) # Mensaje corto del API
+              st.markdown(t['positive_diabetes_reco']) # <-- RECOMENDACIÓN DETALLADA
+            else:
+             # Caso NEGATIVO (NO RIESGO)
+                st.success(data["message"]) # Mensaje corto del API
+                st.markdown(t['negative_diabetes_reco']) # <-- RECOMENDACIÓN DETALLADA
             st.caption("Este resultado es orientativo y no sustituye la valoracion de un profesional de la salud.")
 
 elif selected == t["heart_disease_prediction"]:
@@ -404,7 +412,16 @@ elif selected == t["heart_disease_prediction"]:
         if err:
             st.error(f"Error al llamar la API: {err}")
         else:
-            st.success(data["message"])
+            # AHORA VERIFICAMOS EL RESULTADO (data["prediction"] es 1 o 0)
+            if data["prediction"] == 1:
+                # Caso POSITIVO (RIESGO)
+                st.error(data["message"]) # Mensaje corto del API
+                st.markdown(t['positive_heart_reco']) # <-- RECOMENDACIÓN DETALLADA
+            else:
+                # Caso NEGATIVO (NO RIESGO)
+                st.success(data["message"]) # Mensaje corto del API
+                st.markdown(t['negative_heart_reco']) # <-- RECOMENDACIÓN DETALLADA
+
             st.caption("Este resultado es orientativo y no reemplaza el diagnostico medico profesional.")
 
 elif selected == t["parkinsons_prediction"]:
@@ -521,7 +538,16 @@ elif selected == t["parkinsons_prediction"]:
         if err:
             st.error(f"Error al llamar la API: {err}")
         else:
-            st.success(data["message"])
+            # AHORA VERIFICAMOS EL RESULTADO (data["prediction"] es 1 o 0)
+            if data["prediction"] == 1:
+                # Caso POSITIVO (RIESGO)
+                st.error(data["message"]) # Mensaje corto del API
+                st.markdown(t['positive_parkinson_reco']) # <-- RECOMENDACIÓN DETALLADA
+            else:
+                # Caso NEGATIVO (NO RIESGO)
+                st.success(data["message"]) # Mensaje corto del API
+                st.markdown(t['negative_parkinson_reco']) # <-- RECOMENDACIÓN DETALLADA
+
             st.caption("Este resultado es orientativo y no reemplaza la valoracion de un neurologo.")
 
 # ------------------------------------------------------------

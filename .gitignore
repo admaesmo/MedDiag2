@@ -18,3 +18,8 @@ Thumbs.db
 
 # Ignorar logs
 *.log
+
+# Ignorar markdown excepto README
+*.md
+!README.md
+!readme.md
