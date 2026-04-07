@@ -2,6 +2,10 @@
 
 Frontend nuevo para autenticación y rutas privadas usando Supabase.
 
+## Documentacion
+
+- [Guia de integracion Frontend/API](./FRONTEND_API_INTEGRATION.md)
+
 ## Variables de entorno
 
 Se usa [.env.local](.env.local) con:

@@ -42,7 +42,11 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/register");
-  const isPrivateRoute = pathname.startsWith("/dashboard");
+  const isPrivateRoute =
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/parkinson") ||
+    pathname.startsWith("/history") ||
+    pathname.startsWith("/settings");
 
   if (!user && isPrivateRoute) {
     const url = request.nextUrl.clone();

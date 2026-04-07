@@ -3,10 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useUiStore } from "@/stores/ui-store";
+import { t } from "@/lib/i18n";
+import { Button } from "@/components/atoms/button";
 
 export function LogoutButton() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const locale = useUiStore((state) => state.locale);
 
   const onLogout = async () => {
     setIsLoading(true);
@@ -17,8 +21,8 @@ export function LogoutButton() {
   };
 
   return (
-    <button className="btn-secondary" onClick={onLogout} disabled={isLoading}>
-      {isLoading ? "Cerrando..." : "Cerrar sesión"}
-    </button>
+    <Button variant="secondary" size="sm" onClick={onLogout} disabled={isLoading}>
+      {isLoading ? t(locale, "common", "loading") : t(locale, "nav", "logout")}
+    </Button>
   );
 }
