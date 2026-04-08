@@ -27,7 +27,9 @@ MAX_FILE_SIZE = int(os.getenv("MAX_AUDIO_FILE_SIZE_MB", "25")) * 1024 * 1024  # 
 
 def validate_audio_file(content_type: Optional[str], file_size: int) -> None:
     """Raise ValueError if the file is not an allowed audio type or is too large."""
-    if content_type and content_type not in ALLOWED_MIME_TYPES:
+    normalized_content_type = (content_type or "").split(";", 1)[0].strip().lower()
+
+    if normalized_content_type and normalized_content_type not in ALLOWED_MIME_TYPES:
         raise ValueError(
             f"Tipo de archivo no permitido: {content_type}. "
             f"Permitidos: {', '.join(sorted(ALLOWED_MIME_TYPES))}"

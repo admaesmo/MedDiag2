@@ -62,6 +62,16 @@ export type PredictionResponse = {
   message: string;
 };
 
+export type AudioUploadResponse = {
+  audio_id: number;
+  uuid: string;
+  status: string;
+  original_filename: string;
+  mime_type: string;
+  file_size_bytes: number;
+  created_at: string;
+};
+
 const mockUser: UserOut = {
   id: 12,
   email: "clinician@meddiag.local",
@@ -187,7 +197,66 @@ export async function uploadAudio(accessToken: string): Promise<{ audio_id: numb
     return { audio_id: Math.round(Math.random() * 1000), status: "uploaded" };
   }
 
-  throw new Error("uploadAudio requires multipart implementation in this phase");
+  throw new Error("uploadAudio requires a Blob payload");
+}
+
+export async function uploadAudioMultipart(
+  accessToken: string,
+  audioBlob: Blob,
+  fileName: string,
+  options?: {
+    sourceType?: string;
+    languageCode?: string;
+    notes?: string;
+  },
+): Promise<AudioUploadResponse> {
+  if (useMockApi) {
+    await delay(420);
+    return {
+      audio_id: Math.round(Math.random() * 1000),
+      uuid: crypto.randomUUID(),
+      status: "uploaded",
+      original_filename: fileName,
+      mime_type: audioBlob.type || "audio/webm",
+      file_size_bytes: audioBlob.size,
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  const formData = new FormData();
+  formData.append("file", audioBlob, fileName);
+  formData.append("source_type", options?.sourceType ?? "microphone");
+
+  if (options?.languageCode) {
+    formData.append("language_code", options.languageCode);
+  }
+  if (options?.notes) {
+    formData.append("notes", options.notes);
+  }
+
+  const response = await fetch(`${apiBaseUrl}/audio/upload`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    let detail = `Upload failed: ${response.status}`;
+    try {
+      const payload = (await response.json()) as { detail?: string };
+      if (payload.detail) {
+        detail = payload.detail;
+      }
+    } catch {
+      // Keep generic message if response body is not JSON.
+    }
+    throw new Error(detail);
+  }
+
+  return response.json() as Promise<AudioUploadResponse>;
 }
 
 export async function getDiagnosisHistory(accessToken: string, limit = 50): Promise<DiagnosisHistoryItem[]> {

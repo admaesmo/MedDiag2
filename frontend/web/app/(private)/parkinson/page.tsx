@@ -7,8 +7,9 @@ import { Button } from "@/components/atoms/button";
 import { Card } from "@/components/atoms/card";
 import { Input } from "@/components/atoms/input";
 import { useSessionState } from "@/features/auth/use-session";
+import { useAudioRecording } from "@/features/parkinson/use-audio-recording";
 import { parkinsonTestFeaturePreset, useParkinsonPrediction } from "@/features/parkinson/mutations";
-import { isMockApiEnabled } from "@/lib/api";
+import { isMockApiEnabled, uploadAudioMultipart } from "@/lib/api";
 import { useUiStore } from "@/stores/ui-store";
 import { t } from "@/lib/i18n";
 
@@ -31,12 +32,21 @@ const editableFeatureKeys = [
 
 type EditableFeatureKey = (typeof editableFeatureKeys)[number];
 
+function formatElapsed(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
 export default function ParkinsonPage() {
   const router = useRouter();
   const locale = useUiStore((state) => state.locale);
   const consentAccepted = useUiStore((state) => state.parkinsonConsentAccepted);
   const setConsentAccepted = useUiStore((state) => state.setParkinsonConsentAccepted);
-  const [isRecording, setIsRecording] = useState(false);
+  const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+  const [audioUploadMessage, setAudioUploadMessage] = useState<string | null>(null);
+  const [audioUploadError, setAudioUploadError] = useState<string | null>(null);
   const [consentError, setConsentError] = useState<string | null>(null);
   const [checks, setChecks] = useState({
     data: false,
@@ -53,10 +63,12 @@ export default function ParkinsonPage() {
   const [jsonEditorError, setJsonEditorError] = useState<string | null>(null);
   const firstConsentRef = useRef<HTMLInputElement>(null);
   const { accessToken, email } = useSessionState();
+  const recording = useAudioRecording();
   const prediction = useParkinsonPrediction(accessToken, email);
   const mockApiEnabled = isMockApiEnabled();
   const showTestPanel = mockApiEnabled || process.env.NODE_ENV !== "production";
   const canRunInference = mockApiEnabled || Boolean(accessToken);
+  const elapsedLabel = formatElapsed(recording.elapsedSeconds);
 
   const measures = [
     t(locale, "parkinson", "m1"),
@@ -146,6 +158,65 @@ export default function ParkinsonPage() {
     setConsentAccepted(true);
   };
 
+  const handleRecordButtonClick = async () => {
+    if (isConsentOpen || isUploadingAudio) {
+      return;
+    }
+
+    if (!recording.isRecording) {
+      setAudioUploadMessage(null);
+      setAudioUploadError(null);
+      recording.resetRecording();
+      await recording.startRecording();
+      return;
+    }
+
+    const audioBlob = await recording.stopRecording();
+    if (!audioBlob || audioBlob.size === 0) {
+      setAudioUploadError(t(locale, "parkinson", "noAudioCaptured"));
+      return;
+    }
+
+    if (!accessToken && !mockApiEnabled) {
+      setAudioUploadError(t(locale, "parkinson", "authRequiredForUpload"));
+      return;
+    }
+
+    try {
+      setIsUploadingAudio(true);
+      setAudioUploadError(null);
+
+      const extension = audioBlob.type.includes("webm")
+        ? "webm"
+        : audioBlob.type.includes("mp4")
+          ? "m4a"
+          : audioBlob.type.includes("ogg")
+            ? "ogg"
+            : "wav";
+
+      const response = await uploadAudioMultipart(accessToken ?? "", audioBlob, `parkinson-sample.${extension}`, {
+        sourceType: "microphone",
+        languageCode: locale.split("-")[0],
+      });
+
+      setAudioUploadMessage(`${t(locale, "parkinson", "uploadSuccess")}: #${response.audio_id}`);
+    } catch {
+      setAudioUploadMessage(null);
+      setAudioUploadError(t(locale, "parkinson", "uploadError"));
+    } finally {
+      setIsUploadingAudio(false);
+    }
+  };
+
+  const recordingErrorMessage =
+    recording.error === "recording_not_supported"
+      ? t(locale, "parkinson", "recordingNotSupported")
+      : recording.error === "microphone_permission_denied"
+        ? t(locale, "parkinson", "micPermissionDenied")
+        : recording.error === "recording_failed"
+          ? t(locale, "parkinson", "recordingFailed")
+          : null;
+
   return (
     <section id="main-content" className="space-y-8">
       <header>
@@ -209,7 +280,7 @@ export default function ParkinsonPage() {
       <div className="surface-pane">
         <Card className="mx-auto max-w-3xl bg-white/90 text-center backdrop-blur">
           <div className="relative mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary text-white">
-            {isRecording ? <span className="absolute inset-0 rounded-2xl bg-primary/30 animate-pulse-ring" aria-hidden="true" /> : null}
+            {recording.isRecording ? <span className="absolute inset-0 rounded-2xl bg-primary/30 animate-pulse-ring" aria-hidden="true" /> : null}
             <Mic className="relative h-9 w-9" />
           </div>
 
@@ -225,12 +296,15 @@ export default function ParkinsonPage() {
           <div className="mt-8 flex items-center justify-center gap-3">
             <Button
               size="lg"
-              onClick={() => {
-                setIsRecording((value) => !value);
-              }}
+              onClick={handleRecordButtonClick}
+              disabled={isConsentOpen || isUploadingAudio}
             >
               <Play className="mr-2 h-4 w-4" />
-              {t(locale, "parkinson", "start")}
+              {isUploadingAudio
+                ? t(locale, "parkinson", "uploading")
+                : recording.isRecording
+                  ? t(locale, "parkinson", "stop")
+                  : t(locale, "parkinson", "start")}
             </Button>
             <Button
               variant="secondary"
@@ -243,13 +317,31 @@ export default function ParkinsonPage() {
           </div>
 
           <p className="mt-4 text-sm text-muted-foreground">
-            {t(locale, "parkinson", "elapsed")}: <span className="font-headline text-lg text-foreground">00:00:00</span>
+            {t(locale, "parkinson", "elapsed")}: <span className="font-headline text-lg text-foreground">{elapsedLabel}</span>
           </p>
 
           <div aria-live="polite" className="mt-6 min-h-[28px] text-sm font-semibold text-primary">
             {result ? `${t(locale, "parkinson", "confidenceLabel")}: ${result}` : null}
             {prediction.isError ? t(locale, "parkinson", "inferenceError") : null}
           </div>
+
+          {recordingErrorMessage ? (
+            <p className="mt-3 text-sm font-semibold text-red-700" role="alert">
+              {recordingErrorMessage}
+            </p>
+          ) : null}
+
+          {audioUploadError ? (
+            <p className="mt-2 text-sm font-semibold text-red-700" role="alert">
+              {audioUploadError}
+            </p>
+          ) : null}
+
+          {audioUploadMessage ? (
+            <p className="mt-2 text-sm font-semibold text-emerald-700" role="status">
+              {audioUploadMessage}
+            </p>
+          ) : null}
         </Card>
       </div>
 
