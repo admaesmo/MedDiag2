@@ -1,6 +1,7 @@
 venv/
 .venv/
 .venv311_skl102/
+.pydeps/
 __pycache__/
 *.pyc
 *.pyo
@@ -33,3 +34,4 @@ storage/
 
 # Alembic cache
 alembic/versions/__pycache__/
+scripts/__pycache__/

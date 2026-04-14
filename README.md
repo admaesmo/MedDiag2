@@ -1,7 +1,7 @@
 # MedDiag - Sistema de Diagnostico Medico Inteligente
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)
-![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-FF4B4B?logo=streamlit&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-13+-black?logo=nextdotjs&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
@@ -10,7 +10,7 @@
 
 MedDiag es un Sistema de Apoyo Diagnostico Medico basado en Inteligencia Artificial. Se desarrolló como un Producto Minimo Viable (MVP) durante el curso de Proyecto Integrador. La aplicación permite que los usuarios ingresen información sobre sus sintomas y obtener predicciones preliminares de posibles diagnosticos.
 
-El sistema fue construido utilizando **Streamlit y Python**, integrando modelos de Machine Learning entrenados con datos medicos. La idea principal es proporcionar una herramienta que ayude a identificar tempranamente posibles problemas de salud.
+El sistema fue construido utilizando **FastAPI, Next.js y Python**, integrando modelos de Machine Learning entrenados con datos medicos. La idea principal es proporcionar una herramienta que ayude a identificar tempranamente posibles problemas de salud.
 
 ---
 
@@ -24,7 +24,7 @@ Desarrollar un sistema de apoyo diagnostico basado en inteligencia artificial qu
 
 1. Analizar y adaptar un repositorio base con arquitectura modular
 2. Entrenar modelos de Machine Learning para predicción de enfermedades
-3. Crear una interfaz de usuario facil de usar con Streamlit
+3. Crear una interfaz de usuario web facil de usar
 4. Realizar pruebas del sistema en diferentes fases del desarrollo
 5. Documentar todo el proceso y resultados obtenidos
 
@@ -35,7 +35,7 @@ Desarrollar un sistema de apoyo diagnostico basado en inteligencia artificial qu
 | Tecnología | Versión | Para qué se usa |
 |-----------|---------|--------------------|
 | **Python** | 3.10+ | Lenguaje principal de programación |
-| **Streamlit** | 1.28+ | Para crear la interfaz de usuario |
+| **Next.js** | 13+ | Para crear la interfaz web |
 | **scikit-learn** | 1.3+ | Para entrenar los modelos de Machine Learning |
 | **Pandas** | 2.0+ | Para manipular y procesar los datos |
 | **NumPy** | 1.24+ | Para calculos con arrays y matrices |
@@ -250,12 +250,11 @@ MedDiag/
       database.py         # Configuracion de la base de datos
       validators.py       # Validaciones basicas
 
-  frontend/
-    app_streamlit.py      # Interfaz Streamlit consumiendo la API
+  frontend/web/           # Frontend web en Next.js
 
   saved_models/           # Modelos entrenados (.sav)
   notebooks/              # Notebooks de entrenamiento
-  render.yaml             # Despliegue en Render (API + Streamlit)
+  render.yaml             # Despliegue en Render para la API
   Dockerfile              # Imagen del backend
   requirements.txt        # Dependencias del proyecto
   .env.example            # Variables de entorno ejemplo
@@ -306,29 +305,56 @@ Instala todas las librerias que el proyecto necesita:
 pip install -r requirements.txt
 ```
 
-### Paso 4: Ejecutar la Aplicacion
+### Paso 4: Levantar PostgreSQL local
 
-#### Opcion 1: Solo Streamlit (La mas facil)
+Para trabajar en local sin tocar la base de datos de Supabase, el proyecto queda configurado para usar PostgreSQL local por defecto.
 
 ```bash
-cd frontend
-streamlit run app_streamlit.py
+docker compose up -d db
 ```
 
-La aplicación se abrira en tu navegador en: `http://localhost:8501`
+La conexión local esperada es:
+
+```bash
+postgresql+psycopg2://meddiag:meddiag@localhost:5432/meddiag
+```
+
+### Paso 5: Ejecutar la Aplicacion
+
+Si quieres levantar todo con un solo comando:
+
+```bash
+./scripts/start-local.sh
+```
+
+Y para detenerlo:
+
+```bash
+./scripts/stop-local.sh
+```
+
+#### Opcion 1: Frontend web (Next.js)
+
+```bash
+cd frontend/web
+npm install
+npm run dev
+```
+
+La aplicación se abrira en tu navegador en: `http://localhost:3000`
 
 #### Opcion 2: Con Backend FastAPI (Si quieres probar el backend también)
 
 En una primera terminal ejecuta:
 ```bash
-cd app
-uvicorn main:app --reload
+python -m uvicorn app.main:app --reload
 ```
 
 En otra terminal ejecuta:
 ```bash
-cd frontend
-streamlit run app_streamlit.py
+cd frontend/web
+npm install
+npm run dev
 ```
 
 ---
@@ -429,7 +455,7 @@ Este proyecto fue realizado por estudiantes de Ingenieria de Sistemas como traba
 
 Estas fueron algunas de las fuentes que consultamos para aprender:
 
-1. Documentacion de Streamlit: https://streamlit.io/
+1. Documentacion de Next.js: https://nextjs.org/docs
 2. Documentacion de FastAPI: https://fastapi.tiangolo.com/
 3. Documentacion de scikit-learn: https://scikit-learn.org/
 4. Documentacion de Pandas: https://pandas.pydata.org/
@@ -459,7 +485,7 @@ Si quieres ayudar a mejorar MedDiag, puedes:
 
 MedDiag es un proyecto educativo que demuestra como podemos usar Inteligencia Artificial para ayudar en el area de la salud. Aunque funciona bien para un MVP, es importante recordar que **no debe reemplazar** la opinion de un medico profesional.
 
-Aprendimos mucho durante este proyecto, desde como funcionan los modelos de Machine Learning, hasta como construir una aplicacion web completa con Streamlit.
+Aprendimos mucho durante este proyecto, desde como funcionan los modelos de Machine Learning, hasta como construir una aplicacion web completa con FastAPI y Next.js.
 
 **© 2025 - Proyecto Integrador - Ingenieria de Sistemas**
 
