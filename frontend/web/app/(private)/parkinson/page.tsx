@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mic, Play } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/atoms/button";
 import { Card } from "@/components/atoms/card";
 import { Input } from "@/components/atoms/input";
 import { useSessionState } from "@/features/auth/use-session";
 import { useAudioRecording } from "@/features/parkinson/use-audio-recording";
 import { parkinsonTestFeaturePreset, useParkinsonPrediction } from "@/features/parkinson/mutations";
-import { isMockApiEnabled, uploadAudioMultipart } from "@/lib/api";
+import { getAudioFeatures, getMyAudio, isMockApiEnabled, uploadAudioMultipart } from "@/lib/api";
 import { useUiStore } from "@/stores/ui-store";
 import { t } from "@/lib/i18n";
 
@@ -41,6 +42,7 @@ function formatElapsed(totalSeconds: number): string {
 
 export default function ParkinsonPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const locale = useUiStore((state) => state.locale);
   const consentAccepted = useUiStore((state) => state.parkinsonConsentAccepted);
   const setConsentAccepted = useUiStore((state) => state.setParkinsonConsentAccepted);
@@ -66,8 +68,23 @@ export default function ParkinsonPage() {
   const recording = useAudioRecording();
   const prediction = useParkinsonPrediction(accessToken, email);
   const mockApiEnabled = isMockApiEnabled();
+  const audioQuery = useQuery({
+    queryKey: ["audio", "me", "parkinson"],
+    enabled: Boolean(accessToken) && !mockApiEnabled,
+    queryFn: () => getMyAudio(accessToken as string),
+    refetchInterval: (query) => {
+      const hasProcessing = query.state.data?.items?.some((item) => item.status === "processing");
+      return hasProcessing ? 2000 : false;
+    },
+  });
   const showTestPanel = mockApiEnabled || process.env.NODE_ENV !== "production";
-  const canRunInference = mockApiEnabled || Boolean(accessToken);
+  const latestAudio = audioQuery.data?.items?.[0] ?? null;
+  const isAudioReady = Boolean(
+    latestAudio &&
+      (latestAudio.is_ready_for_inference ?? ["processed", "transcribed"].includes(latestAudio.status)),
+  );
+  const isAudioProcessing = latestAudio?.status === "processing";
+  const canRunInference = mockApiEnabled || (Boolean(accessToken) && isAudioReady && !isAudioProcessing);
   const elapsedLabel = formatElapsed(recording.elapsedSeconds);
 
   const measures = [
@@ -200,6 +217,8 @@ export default function ParkinsonPage() {
       });
 
       setAudioUploadMessage(`${t(locale, "parkinson", "uploadSuccess")}: #${response.audio_id}`);
+      queryClient.invalidateQueries({ queryKey: ["audio", "me"] });
+      queryClient.invalidateQueries({ queryKey: ["audio", "me", "parkinson"] });
     } catch {
       setAudioUploadMessage(null);
       setAudioUploadError(t(locale, "parkinson", "uploadError"));
@@ -216,6 +235,36 @@ export default function ParkinsonPage() {
         : recording.error === "recording_failed"
           ? t(locale, "parkinson", "recordingFailed")
           : null;
+
+    const handleInferenceClick = async () => {
+      if (mockApiEnabled) {
+        prediction.mutate(testFeatureValues);
+        return;
+      }
+
+      if (!accessToken) {
+        setAudioUploadError(t(locale, "parkinson", "authRequiredForUpload"));
+        return;
+      }
+
+      if (!latestAudio) {
+        setAudioUploadError(t(locale, "parkinson", "noAudioForInference"));
+        return;
+      }
+
+      if (!isAudioReady || isAudioProcessing) {
+        setAudioUploadError(t(locale, "parkinson", "audioStillProcessing"));
+        return;
+      }
+
+      try {
+        setAudioUploadError(null);
+        const response = await getAudioFeatures(accessToken, latestAudio.id);
+        prediction.mutate(response.features);
+      } catch {
+        setAudioUploadError(t(locale, "parkinson", "featureLoadError"));
+      }
+    };
 
   return (
     <section id="main-content" className="space-y-8">
@@ -309,12 +358,26 @@ export default function ParkinsonPage() {
             <Button
               variant="secondary"
               size="lg"
-              onClick={() => prediction.mutate(testFeatureValues)}
+              onClick={handleInferenceClick}
               disabled={!canRunInference || prediction.isPending || isConsentOpen}
             >
-              {prediction.isPending ? t(locale, "parkinson", "processing") : t(locale, "parkinson", "runInference")}
+              {prediction.isPending
+                ? t(locale, "parkinson", "processing")
+                : isAudioProcessing
+                  ? t(locale, "parkinson", "audioProcessing")
+                  : t(locale, "parkinson", "runInference")}
             </Button>
           </div>
+
+          {!mockApiEnabled && latestAudio ? (
+            <p className="mt-2 text-xs text-muted-foreground" role="status" aria-live="polite">
+              {isAudioProcessing
+                ? t(locale, "parkinson", "audioStillProcessing")
+                : isAudioReady
+                  ? t(locale, "parkinson", "audioReadyForInference")
+                  : t(locale, "parkinson", "noAudioForInference")}
+            </p>
+          ) : null}
 
           <p className="mt-4 text-sm text-muted-foreground">
             {t(locale, "parkinson", "elapsed")}: <span className="font-headline text-lg text-foreground">{elapsedLabel}</span>
