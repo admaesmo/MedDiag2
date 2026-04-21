@@ -8,6 +8,9 @@ import { useForm } from "react-hook-form";
 import { Button } from "@/components/atoms/button";
 import { Input } from "@/components/atoms/input";
 import { loginSchema, type LoginValues } from "@/features/auth/schema";
+import { isLocalAuthEnabled, localAuthDefaults } from "@/lib/auth-mode";
+import { setLocalSession } from "@/lib/local-auth";
+import { issueDevToken } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 import { useUiStore } from "@/stores/ui-store";
 import { t } from "@/lib/i18n";
@@ -22,8 +25,8 @@ export default function LoginPage() {
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: "",
-      password: "",
+      email: isLocalAuthEnabled ? localAuthDefaults.email : "",
+      password: isLocalAuthEnabled ? localAuthDefaults.password : "",
     },
   });
 
@@ -42,6 +45,34 @@ export default function LoginPage() {
   const onLogin = async (values: LoginValues) => {
     setError(null);
     setIsLoading(true);
+
+    if (isLocalAuthEnabled) {
+      if (
+        values.email !== localAuthDefaults.email ||
+        values.password !== localAuthDefaults.password
+      ) {
+        setIsLoading(false);
+        setError("Credenciales locales invalidas.");
+        return;
+      }
+
+      try {
+        const token = await issueDevToken(
+          localAuthDefaults.email,
+          localAuthDefaults.role,
+          localAuthDefaults.displayName,
+        );
+        setLocalSession(token.access_token, localAuthDefaults.email);
+        setIsLoading(false);
+        router.replace(nextPath);
+        router.refresh();
+        return;
+      } catch (err) {
+        setIsLoading(false);
+        setError(err instanceof Error ? err.message : "No fue posible iniciar sesion local.");
+        return;
+      }
+    }
 
     const supabase = createClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -124,14 +155,20 @@ export default function LoginPage() {
         </Button>
       </form>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={() => onOAuth("google")} aria-label={t(locale, "auth", "oauthGoogle")}>
-          {t(locale, "auth", "oauthGoogle")}
-        </Button>
-        <Button variant="secondary" onClick={() => onOAuth("github")} aria-label={t(locale, "auth", "oauthGithub")}>
-          {t(locale, "auth", "oauthGithub")}
-        </Button>
-      </div>
+      {isLocalAuthEnabled ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          Modo local activo. Usa <strong>{localAuthDefaults.email}</strong> / <strong>{localAuthDefaults.password}</strong>.
+        </p>
+      ) : (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => onOAuth("google")} aria-label={t(locale, "auth", "oauthGoogle")}>
+            {t(locale, "auth", "oauthGoogle")}
+          </Button>
+          <Button variant="secondary" onClick={() => onOAuth("github")} aria-label={t(locale, "auth", "oauthGithub")}>
+            {t(locale, "auth", "oauthGithub")}
+          </Button>
+        </div>
+      )}
 
       {error ? <p className="mt-3 text-sm font-semibold text-red-700" role="alert" aria-live="assertive">{error}</p> : null}
 

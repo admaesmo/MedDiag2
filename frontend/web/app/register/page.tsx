@@ -8,6 +8,9 @@ import { useForm } from "react-hook-form";
 import { Button } from "@/components/atoms/button";
 import { Input } from "@/components/atoms/input";
 import { registerSchema, type RegisterValues } from "@/features/auth/schema";
+import { isLocalAuthEnabled } from "@/lib/auth-mode";
+import { setLocalSession } from "@/lib/local-auth";
+import { issueDevToken } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 import { useUiStore } from "@/stores/ui-store";
 import { t } from "@/lib/i18n";
@@ -41,6 +44,23 @@ export default function RegisterPage() {
     setError(null);
     setMessage(null);
     setIsLoading(true);
+
+    if (isLocalAuthEnabled) {
+      try {
+        const displayName = values.email.split("@")[0] || "Dev Local";
+        const token = await issueDevToken(values.email, "patient", displayName);
+        setLocalSession(token.access_token, values.email);
+        setMessage("Sesion local creada para desarrollo.");
+        setIsLoading(false);
+        router.replace("/dashboard");
+        router.refresh();
+        return;
+      } catch (err) {
+        setIsLoading(false);
+        setError(err instanceof Error ? err.message : "No fue posible crear la sesion local.");
+        return;
+      }
+    }
 
     const supabase = createClient();
     const redirectTo = `${window.location.origin}/auth/callback?next=/dashboard`;

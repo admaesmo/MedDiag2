@@ -78,6 +78,11 @@ export type AudioUploadResponse = {
   created_at: string;
 };
 
+export type DevTokenResponse = {
+  access_token: string;
+  token_type: string;
+};
+
 const mockUser: UserOut = {
   id: 12,
   email: "clinician@meddiag.local",
@@ -175,6 +180,17 @@ export async function getMe(accessToken: string): Promise<UserOut> {
   }
 
   return apiRequest<UserOut>("/auth/me", accessToken, { method: "GET" });
+}
+
+export async function issueDevToken(email: string, role = "patient", displayName?: string): Promise<DevTokenResponse> {
+  return apiRequest<DevTokenResponse>("/auth/dev/token", undefined, {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      role,
+      display_name: displayName,
+    }),
+  });
 }
 
 export async function getMyAudio(accessToken: string): Promise<AudioListResponse> {

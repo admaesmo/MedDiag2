@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isLocalAuthEnabled } from "@/lib/auth-mode";
+import { getLocalSession } from "@/lib/local-auth";
 import { createClient } from "@/lib/supabase/client";
 
 type SessionState = {
@@ -17,6 +19,23 @@ export function useSessionState(): SessionState {
   });
 
   useEffect(() => {
+    if (isLocalAuthEnabled) {
+      const syncLocalState = () => {
+        const localSession = getLocalSession();
+        setState({
+          accessToken: localSession.accessToken,
+          email: localSession.email,
+          loading: false,
+        });
+      };
+
+      syncLocalState();
+      window.addEventListener("storage", syncLocalState);
+      return () => {
+        window.removeEventListener("storage", syncLocalState);
+      };
+    }
+
     const supabase = createClient();
 
     supabase.auth.getSession().then(({ data }) => {
