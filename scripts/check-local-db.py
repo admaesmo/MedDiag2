@@ -15,10 +15,6 @@ def main() -> int:
         print("DATABASE_URL is not set.")
         return 1
 
-    if not database_url.startswith("postgresql"):
-        print(f"DATABASE_URL is not configured for PostgreSQL: {database_url}")
-        return 1
-
     try:
         with engine.connect() as connection:
             result = connection.execute(text("SELECT 1")).scalar()
@@ -26,7 +22,8 @@ def main() -> int:
         print(f"Database connection failed: {exc}")
         return 1
 
-    print(f"Database connection OK. SELECT 1 -> {result}")
+    backend = "PostgreSQL" if database_url.startswith("postgresql") else "SQLite"
+    print(f"Database connection OK ({backend}). SELECT 1 -> {result}")
     return 0
 
 

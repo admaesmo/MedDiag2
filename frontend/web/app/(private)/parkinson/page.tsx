@@ -10,7 +10,14 @@ import { Input } from "@/components/atoms/input";
 import { useSessionState } from "@/features/auth/use-session";
 import { useAudioRecording } from "@/features/parkinson/use-audio-recording";
 import { parkinsonTestFeaturePreset, useParkinsonPrediction } from "@/features/parkinson/mutations";
-import { getAudioFeatures, getMyAudio, isMockApiEnabled, uploadAudioMultipart } from "@/lib/api";
+import {
+  extractVoiceBiomarkersMultipart,
+  getAudioFeatures,
+  getMyAudio,
+  isMockApiEnabled,
+  type VoiceBiomarkerExtractionResponse,
+  uploadAudioMultipart,
+} from "@/lib/api";
 import { useUiStore } from "@/stores/ui-store";
 import { t } from "@/lib/i18n";
 
@@ -47,8 +54,12 @@ export default function ParkinsonPage() {
   const consentAccepted = useUiStore((state) => state.parkinsonConsentAccepted);
   const setConsentAccepted = useUiStore((state) => state.setParkinsonConsentAccepted);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+  const [isExtractingBiomarkers, setIsExtractingBiomarkers] = useState(false);
   const [audioUploadMessage, setAudioUploadMessage] = useState<string | null>(null);
   const [audioUploadError, setAudioUploadError] = useState<string | null>(null);
+  const [biomarkerMessage, setBiomarkerMessage] = useState<string | null>(null);
+  const [biomarkerError, setBiomarkerError] = useState<string | null>(null);
+  const [biomarkerResponse, setBiomarkerResponse] = useState<VoiceBiomarkerExtractionResponse | null>(null);
   const [consentError, setConsentError] = useState<string | null>(null);
   const [checks, setChecks] = useState({
     data: false,
@@ -87,26 +98,55 @@ export default function ParkinsonPage() {
   const canRunInference = mockApiEnabled || (Boolean(accessToken) && isAudioReady && !isAudioProcessing);
   const elapsedLabel = formatElapsed(recording.elapsedSeconds);
 
-  const measures = [
-    t(locale, "parkinson", "m1"),
-    t(locale, "parkinson", "m2"),
-    t(locale, "parkinson", "m3"),
-    t(locale, "parkinson", "m4"),
-    t(locale, "parkinson", "m5"),
-    t(locale, "parkinson", "m6"),
-    t(locale, "parkinson", "m7"),
-    t(locale, "parkinson", "m8"),
-  ];
-
-  const measureDescriptions = [
-    t(locale, "parkinson", "m1Info"),
-    t(locale, "parkinson", "m2Info"),
-    t(locale, "parkinson", "m3Info"),
-    t(locale, "parkinson", "m4Info"),
-    t(locale, "parkinson", "m5Info"),
-    t(locale, "parkinson", "m6Info"),
-    t(locale, "parkinson", "m7Info"),
-    t(locale, "parkinson", "m8Info"),
+  const biomarkerCards = [
+    {
+      key: "pitch_mean",
+      label: t(locale, "parkinson", "biomarkerPitchMean"),
+      description: t(locale, "parkinson", "biomarkerPitchMeanInfo"),
+      value: biomarkerResponse?.biomarkers.pitch_mean,
+      unit: "Hz",
+      decimals: 2,
+    },
+    {
+      key: "pitch_min",
+      label: t(locale, "parkinson", "biomarkerPitchMin"),
+      description: t(locale, "parkinson", "biomarkerPitchMinInfo"),
+      value: biomarkerResponse?.biomarkers.pitch_min,
+      unit: "Hz",
+      decimals: 2,
+    },
+    {
+      key: "pitch_max",
+      label: t(locale, "parkinson", "biomarkerPitchMax"),
+      description: t(locale, "parkinson", "biomarkerPitchMaxInfo"),
+      value: biomarkerResponse?.biomarkers.pitch_max,
+      unit: "Hz",
+      decimals: 2,
+    },
+    {
+      key: "jitter_local",
+      label: t(locale, "parkinson", "biomarkerJitterLocal"),
+      description: t(locale, "parkinson", "biomarkerJitterLocalInfo"),
+      value: biomarkerResponse?.biomarkers.jitter_local,
+      unit: "",
+      decimals: 6,
+    },
+    {
+      key: "shimmer_local",
+      label: t(locale, "parkinson", "biomarkerShimmerLocal"),
+      description: t(locale, "parkinson", "biomarkerShimmerLocalInfo"),
+      value: biomarkerResponse?.biomarkers.shimmer_local,
+      unit: "",
+      decimals: 6,
+    },
+    {
+      key: "hnr_mean",
+      label: t(locale, "parkinson", "biomarkerHnrMean"),
+      description: t(locale, "parkinson", "biomarkerHnrMeanInfo"),
+      value: biomarkerResponse?.biomarkers.hnr_mean,
+      unit: "dB",
+      decimals: 2,
+    },
   ];
 
   const isConsentOpen = !consentAccepted;
@@ -158,12 +198,13 @@ export default function ParkinsonPage() {
     setJsonEditorValue(JSON.stringify(testFeatureValues, null, 2));
   }, [testFeatureValues]);
 
+  const activePrediction = biomarkerResponse?.parkinson_inference ?? prediction.data ?? null;
   const result = useMemo(() => {
-    if (!prediction.data) {
+    if (!activePrediction) {
       return null;
     }
-    return `${(prediction.data.probability * 100).toFixed(2)}%`;
-  }, [prediction.data]);
+    return `${(activePrediction.probability * 100).toFixed(2)}%`;
+  }, [activePrediction]);
 
   const handleContinue = () => {
     if (!canProceed) {
@@ -176,13 +217,17 @@ export default function ParkinsonPage() {
   };
 
   const handleRecordButtonClick = async () => {
-    if (isConsentOpen || isUploadingAudio) {
+    if (isConsentOpen || isUploadingAudio || isExtractingBiomarkers) {
       return;
     }
 
     if (!recording.isRecording) {
       setAudioUploadMessage(null);
       setAudioUploadError(null);
+      setBiomarkerMessage(null);
+      setBiomarkerError(null);
+      setBiomarkerResponse(null);
+      prediction.reset();
       recording.resetRecording();
       await recording.startRecording();
       return;
@@ -194,6 +239,36 @@ export default function ParkinsonPage() {
       return;
     }
 
+    setBiomarkerError(null);
+    setBiomarkerMessage(null);
+    setAudioUploadError(null);
+    setAudioUploadMessage(null);
+    prediction.reset();
+
+    const extension = audioBlob.type.includes("webm")
+      ? "webm"
+      : audioBlob.type.includes("mp4")
+        ? "m4a"
+        : audioBlob.type.includes("ogg")
+          ? "ogg"
+          : "wav";
+    const uploadFileName = `parkinson-sample.${extension}`;
+
+    try {
+      setIsExtractingBiomarkers(true);
+      const biomarkers = await extractVoiceBiomarkersMultipart(audioBlob, uploadFileName);
+      setBiomarkerResponse(biomarkers);
+      setBiomarkerMessage(t(locale, "parkinson", "biomarkerSuccess"));
+    } catch (error) {
+      setBiomarkerResponse(null);
+      setBiomarkerMessage(null);
+      setBiomarkerError(
+        error instanceof Error ? error.message : t(locale, "parkinson", "biomarkerExtractError"),
+      );
+    } finally {
+      setIsExtractingBiomarkers(false);
+    }
+
     if (!accessToken && !mockApiEnabled) {
       setAudioUploadError(t(locale, "parkinson", "authRequiredForUpload"));
       return;
@@ -201,17 +276,8 @@ export default function ParkinsonPage() {
 
     try {
       setIsUploadingAudio(true);
-      setAudioUploadError(null);
 
-      const extension = audioBlob.type.includes("webm")
-        ? "webm"
-        : audioBlob.type.includes("mp4")
-          ? "m4a"
-          : audioBlob.type.includes("ogg")
-            ? "ogg"
-            : "wav";
-
-      const response = await uploadAudioMultipart(accessToken ?? "", audioBlob, `parkinson-sample.${extension}`, {
+      const response = await uploadAudioMultipart(accessToken ?? "", audioBlob, uploadFileName, {
         sourceType: "microphone",
         languageCode: locale.split("-")[0],
       });
@@ -232,6 +298,8 @@ export default function ParkinsonPage() {
       ? t(locale, "parkinson", "recordingNotSupported")
       : recording.error === "microphone_permission_denied"
         ? t(locale, "parkinson", "micPermissionDenied")
+        : recording.error === "audio_conversion_failed"
+          ? t(locale, "parkinson", "audioConversionFailed")
         : recording.error === "recording_failed"
           ? t(locale, "parkinson", "recordingFailed")
           : null;
@@ -346,10 +414,12 @@ export default function ParkinsonPage() {
             <Button
               size="lg"
               onClick={handleRecordButtonClick}
-              disabled={isConsentOpen || isUploadingAudio}
+              disabled={isConsentOpen || isUploadingAudio || isExtractingBiomarkers}
             >
               <Play className="mr-2 h-4 w-4" />
-              {isUploadingAudio
+              {isExtractingBiomarkers
+                ? t(locale, "parkinson", "extractingBiomarkers")
+                : isUploadingAudio
                 ? t(locale, "parkinson", "uploading")
                 : recording.isRecording
                   ? t(locale, "parkinson", "stop")
@@ -384,13 +454,39 @@ export default function ParkinsonPage() {
           </p>
 
           <div aria-live="polite" className="mt-6 min-h-[28px] text-sm font-semibold text-primary">
-            {result ? `${t(locale, "parkinson", "confidenceLabel")}: ${result}` : null}
+            {result ? (
+              <div>
+                <p>{`${t(locale, "parkinson", "confidenceLabel")}: ${result}`}</p>
+                {biomarkerResponse?.parkinson_inference ? (
+                  <p className="mt-1 text-xs font-medium text-muted-foreground">
+                    {t(locale, "parkinson", "directModelResultLabel")}
+                  </p>
+                ) : null}
+                {activePrediction?.message ? (
+                  <p className="mt-1 text-xs font-medium text-muted-foreground">
+                    {activePrediction.message}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             {prediction.isError ? t(locale, "parkinson", "inferenceError") : null}
           </div>
 
           {recordingErrorMessage ? (
             <p className="mt-3 text-sm font-semibold text-red-700" role="alert">
               {recordingErrorMessage}
+            </p>
+          ) : null}
+
+          {biomarkerError ? (
+            <p className="mt-2 text-sm font-semibold text-red-700" role="alert">
+              {biomarkerError}
+            </p>
+          ) : null}
+
+          {biomarkerMessage ? (
+            <p className="mt-2 text-sm font-semibold text-emerald-700" role="status">
+              {biomarkerMessage}
             </p>
           ) : null}
 
@@ -405,6 +501,81 @@ export default function ParkinsonPage() {
               {audioUploadMessage}
             </p>
           ) : null}
+
+          <div className="mt-8 rounded-2xl border border-primary/10 bg-primary/5 p-5 text-left">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  {t(locale, "parkinson", "biomarkerPanelTitle")}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t(locale, "parkinson", "biomarkerPanelHint")}
+                </p>
+              </div>
+              {biomarkerResponse ? (
+                <div className="text-right">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    {t(locale, "parkinson", "biomarkerMetadataLabel")}
+                  </p>
+                  <p className="mt-1 text-sm text-foreground">
+                    {biomarkerResponse.audio.sample_rate_hz} Hz | {biomarkerResponse.audio.channels} ch | {biomarkerResponse.audio.normalized_format.toUpperCase()} | {biomarkerResponse.audio.duration_seconds.toFixed(2)} s
+                  </p>
+                </div>
+              ) : null}
+            </div>
+
+            {!biomarkerResponse ? (
+              <p className="mt-4 rounded-xl bg-white/70 px-4 py-3 text-sm text-muted-foreground">
+                {t(locale, "parkinson", "biomarkerPanelEmpty")}
+              </p>
+            ) : null}
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {biomarkerCards.map((item) => (
+                <div key={item.key} className="rounded-xl bg-white/80 p-4 shadow-sm">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    {t(locale, "parkinson", "measureLabel")}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-foreground">{item.label}</p>
+                  <p className="mt-2 text-2xl font-bold text-foreground">
+                    {typeof item.value === "number"
+                      ? `${item.value.toFixed(item.decimals)}${item.unit ? ` ${item.unit}` : ""}`
+                      : t(locale, "common", "notAvailable")}
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground" title={item.description}>
+                    {item.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {biomarkerResponse ? (
+              <div className="mt-4 rounded-xl bg-white/80 p-4 shadow-sm">
+                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                  {t(locale, "parkinson", "directModelResultLabel")}
+                </p>
+                <p className="mt-2 text-sm text-foreground">
+                  {t(locale, "common", "model")}: {biomarkerResponse.parkinson_model_input.model_name}
+                </p>
+                <p className="mt-1 text-sm text-foreground">
+                  {t(locale, "parkinson", "modelVectorCoverageLabel")}: {biomarkerResponse.parkinson_model_input.feature_count}/
+                  {biomarkerResponse.parkinson_model_input.required_feature_count}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-foreground">
+                  {`${t(locale, "parkinson", "confidenceLabel")}: ${(biomarkerResponse.parkinson_inference.probability * 100).toFixed(2)}%`}
+                </p>
+                <p className="mt-1 text-sm text-foreground">
+                  {biomarkerResponse.parkinson_inference.message}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {biomarkerResponse.parkinson_model_input.note}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {biomarkerResponse.parkinson_model_bridge.note}
+                </p>
+              </div>
+            ) : null}
+          </div>
         </Card>
       </div>
 
@@ -468,17 +639,6 @@ export default function ParkinsonPage() {
       </Card>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {measures.map((item, index) => (
-          <Card key={item} className="p-4">
-            <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{t(locale, "parkinson", "measureLabel")}</p>
-            <p className="mt-2 text-base font-semibold text-foreground">{item}</p>
-            <p className="mt-2 text-xs text-muted-foreground" title={measureDescriptions[index]}>
-              {measureDescriptions[index]}
-            </p>
-          </Card>
-        ))}
-      </section>
     </section>
   );
 }
