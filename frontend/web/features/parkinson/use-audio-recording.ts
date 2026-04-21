@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { convertAudioBlobToWav } from "@/features/parkinson/audio-blob-to-wav";
 
 const MIME_CANDIDATES = [
   "audio/webm;codecs=opus",
@@ -117,9 +118,6 @@ export function useAudioRecording(): AudioRecordingState {
       };
 
       recorder.onstop = () => {
-        const mimeType = recorder.mimeType || audioMimeType || "audio/webm";
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        setAudioBlob(blob.size > 0 ? blob : null);
         setIsRecording(false);
         stopTimer();
         stopTracks();
@@ -156,7 +154,25 @@ export function useAudioRecording(): AudioRecordingState {
       recorder.stop();
     });
 
-    return new Blob(chunksRef.current, { type: recorder.mimeType || audioMimeType || "audio/webm" });
+    const rawBlob = new Blob(chunksRef.current, {
+      type: recorder.mimeType || audioMimeType || "audio/webm",
+    });
+
+    if (rawBlob.size === 0) {
+      setAudioBlob(null);
+      return null;
+    }
+
+    try {
+      const normalizedBlob = await convertAudioBlobToWav(rawBlob);
+      setAudioBlob(normalizedBlob);
+      setError(null);
+      return normalizedBlob;
+    } catch {
+      setAudioBlob(null);
+      setError("audio_conversion_failed");
+      return null;
+    }
   }, [audioBlob, audioMimeType]);
 
   useEffect(() => {

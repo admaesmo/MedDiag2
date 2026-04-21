@@ -32,13 +32,18 @@ try:
 except ImportError:  # pragma: no cover - dependency is declared in requirements.txt
     PYDUB_AVAILABLE = False
 
-from app.model_predict import PARK_FEATURE_ORDER
+from app.model_predict import PARK_FEATURE_ORDER, predict_parkinson
+from app.services.audio_processing import AudioProcessingError, extract_features_from_audio
+from app.utils.validators import validate_required_features
 
 TARGET_SAMPLE_RATE_HZ = 16000
 TARGET_CHANNELS = 1
 TARGET_WAV_FORMAT = "wav"
 DEFAULT_PITCH_FLOOR_HZ = 75.0
 DEFAULT_PITCH_CEILING_HZ = 300.0
+PARKINSON_MODEL_FILENAME = "parkinsons_model.sav"
+PARKINSON_POSITIVE_MESSAGE = "La persona puede tener Parkinson, consulte a su médico."
+PARKINSON_NEGATIVE_MESSAGE = "La persona no tiene Parkinson."
 
 
 class VoiceBiomarkerError(Exception):
@@ -154,6 +159,14 @@ def cleanup_prepared_audio(prepared_audio: Optional[PreparedVoiceAudio]) -> None
         pass
 
 
+def _read_normalized_audio_bytes(prepared_audio: PreparedVoiceAudio) -> bytes:
+    try:
+        with open(prepared_audio.temp_wav_path, "rb") as temp_wav:
+            return temp_wav.read()
+    except OSError as exc:
+        raise VoiceBiomarkerError(f"Failed to read normalized audio for analysis: {exc}") from exc
+
+
 def _ensure_finite_metric(value: float, metric_name: str) -> float:
     metric_value = float(value)
     if not np.isfinite(metric_value):
@@ -212,6 +225,32 @@ def extract_voice_biomarkers(
     return biomarkers
 
 
+def extract_parkinson_model_features(prepared_audio: PreparedVoiceAudio) -> Dict[str, float]:
+    """
+    Build the full 22-feature Parkinson vector from the normalized audio.
+
+    This reuses the project's current audio feature extractor so the direct
+    inference path remains aligned with the existing Parkinson model contract.
+    """
+
+    try:
+        normalized_audio_bytes = _read_normalized_audio_bytes(prepared_audio)
+        features = extract_features_from_audio(
+            normalized_audio_bytes,
+            sample_rate=prepared_audio.sample_rate_hz,
+            source_name="normalized.wav",
+        )
+        validate_required_features(features, PARK_FEATURE_ORDER)
+    except AudioProcessingError as exc:
+        raise VoiceBiomarkerError(f"Failed to extract Parkinson model features: {exc}") from exc
+    except ValueError as exc:
+        raise VoiceBiomarkerError(f"Incomplete Parkinson model feature vector: {exc}") from exc
+    except Exception as exc:
+        raise VoiceBiomarkerError(f"Failed to build Parkinson model features: {exc}") from exc
+
+    return {feature: float(features[feature]) for feature in PARK_FEATURE_ORDER}
+
+
 def build_parkinson_model_bridge(biomarkers: Dict[str, float]) -> Dict[str, object]:
     """
     Build a conservative bridge payload toward the current Parkinson model.
@@ -231,12 +270,41 @@ def build_parkinson_model_bridge(biomarkers: Dict[str, float]) -> Dict[str, obje
     missing_features = [feature for feature in PARK_FEATURE_ORDER if feature not in mapped_features]
 
     return {
-        "model_name": "parkinsons_model.sav",
+        "model_name": PARKINSON_MODEL_FILENAME,
         "mapped_features": mapped_features,
         "missing_features": missing_features,
         "ready_for_direct_inference": len(missing_features) == 0,
         "note": (
-            "This endpoint extracts the requested six Parselmouth biomarkers. "
-            "The current Parkinson model still requires the complete 22-feature vector."
+            "This partial bridge maps only the requested Parselmouth biomarkers. "
+            "Direct inference requires the complete 22-feature Parkinson vector."
         ),
+    }
+
+
+def build_parkinson_model_input(features: Dict[str, float]) -> Dict[str, object]:
+    return {
+        "model_name": PARKINSON_MODEL_FILENAME,
+        "features": {feature: float(features[feature]) for feature in PARK_FEATURE_ORDER},
+        "feature_count": len(features),
+        "required_feature_count": len(PARK_FEATURE_ORDER),
+        "ready_for_direct_inference": True,
+        "note": (
+            "This feature vector is generated from the normalized audio using the "
+            "same extraction service that feeds the current Parkinson pipeline."
+        ),
+    }
+
+
+def run_parkinson_direct_inference(features: Dict[str, float]) -> Dict[str, object]:
+    try:
+        prediction, probability = predict_parkinson(features)
+    except Exception as exc:
+        raise VoiceBiomarkerError(f"Failed to run Parkinson inference: {exc}") from exc
+
+    return {
+        "model_name": PARKINSON_MODEL_FILENAME,
+        "disease_code": "PARK",
+        "prediction": int(prediction),
+        "probability": float(probability),
+        "message": PARKINSON_POSITIVE_MESSAGE if prediction == 1 else PARKINSON_NEGATIVE_MESSAGE,
     }

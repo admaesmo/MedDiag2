@@ -109,11 +109,30 @@ export type ParkinsonModelBridgeResponse = {
   note: string;
 };
 
+export type ParkinsonModelInputResponse = {
+  model_name: string;
+  features: Record<string, number>;
+  feature_count: number;
+  required_feature_count: number;
+  ready_for_direct_inference: boolean;
+  note: string;
+};
+
+export type ParkinsonInferenceResponse = {
+  model_name: string;
+  disease_code: string;
+  prediction: number;
+  probability: number;
+  message: string;
+};
+
 export type VoiceBiomarkerExtractionResponse = {
   status: string;
   audio: VoiceBiomarkerAudioMetadata;
   biomarkers: VoiceBiomarkerSet;
   parkinson_model_bridge: ParkinsonModelBridgeResponse;
+  parkinson_model_input: ParkinsonModelInputResponse;
+  parkinson_inference: ParkinsonInferenceResponse;
 };
 
 const mockUser: UserOut = {
@@ -326,6 +345,31 @@ export async function extractVoiceBiomarkersMultipart(
     const pitchMin = pitchMean - (5 + Math.random() * 10);
     const pitchMax = pitchMean + (8 + Math.random() * 14);
     const hnrMean = 18 + Math.random() * 8;
+    const probability = 0.18 + Math.random() * 0.22;
+    const fullFeatureVector = {
+      "MDVP:Fo(Hz)": pitchMean,
+      "MDVP:Fhi(Hz)": pitchMax,
+      "MDVP:Flo(Hz)": pitchMin,
+      "MDVP:Jitter(%)": 0.003 + Math.random() * 0.01,
+      "MDVP:Jitter(Abs)": 0.00002 + Math.random() * 0.0001,
+      "MDVP:RAP": 0.002 + Math.random() * 0.004,
+      "MDVP:PPQ": 0.003 + Math.random() * 0.005,
+      "Jitter:DDP": 0.006 + Math.random() * 0.012,
+      "MDVP:Shimmer": 0.02 + Math.random() * 0.04,
+      "MDVP:Shimmer(dB)": 0.2 + Math.random() * 0.4,
+      "Shimmer:APQ3": 0.01 + Math.random() * 0.03,
+      "Shimmer:APQ5": 0.015 + Math.random() * 0.03,
+      "MDVP:APQ": 0.015 + Math.random() * 0.03,
+      "Shimmer:DDA": 0.03 + Math.random() * 0.06,
+      "NHR": 0.005 + Math.random() * 0.03,
+      "HNR": hnrMean,
+      RPDE: 0.35 + Math.random() * 0.15,
+      DFA: 0.65 + Math.random() * 0.25,
+      spread1: -6 + Math.random() * 2,
+      spread2: 0.15 + Math.random() * 0.2,
+      D2: 2 + Math.random() * 0.8,
+      PPE: 0.12 + Math.random() * 0.18,
+    };
 
     return {
       status: "success",
@@ -374,7 +418,25 @@ export async function extractVoiceBiomarkersMultipart(
           "PPE",
         ],
         ready_for_direct_inference: false,
-        note: "Mock biomarker bridge generated locally.",
+        note: "This partial bridge maps only the requested Parselmouth biomarkers.",
+      },
+      parkinson_model_input: {
+        model_name: "parkinsons_model.sav",
+        features: fullFeatureVector,
+        feature_count: 22,
+        required_feature_count: 22,
+        ready_for_direct_inference: true,
+        note: "Mock full feature vector generated from the normalized audio flow.",
+      },
+      parkinson_inference: {
+        model_name: "parkinsons_model.sav",
+        disease_code: "PARK",
+        prediction: probability >= 0.5 ? 1 : 0,
+        probability,
+        message:
+          probability >= 0.5
+            ? "La persona puede tener Parkinson, consulte a su médico."
+            : "La persona no tiene Parkinson.",
       },
     };
   }

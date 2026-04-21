@@ -198,12 +198,13 @@ export default function ParkinsonPage() {
     setJsonEditorValue(JSON.stringify(testFeatureValues, null, 2));
   }, [testFeatureValues]);
 
+  const activePrediction = biomarkerResponse?.parkinson_inference ?? prediction.data ?? null;
   const result = useMemo(() => {
-    if (!prediction.data) {
+    if (!activePrediction) {
       return null;
     }
-    return `${(prediction.data.probability * 100).toFixed(2)}%`;
-  }, [prediction.data]);
+    return `${(activePrediction.probability * 100).toFixed(2)}%`;
+  }, [activePrediction]);
 
   const handleContinue = () => {
     if (!canProceed) {
@@ -226,6 +227,7 @@ export default function ParkinsonPage() {
       setBiomarkerMessage(null);
       setBiomarkerError(null);
       setBiomarkerResponse(null);
+      prediction.reset();
       recording.resetRecording();
       await recording.startRecording();
       return;
@@ -241,6 +243,7 @@ export default function ParkinsonPage() {
     setBiomarkerMessage(null);
     setAudioUploadError(null);
     setAudioUploadMessage(null);
+    prediction.reset();
 
     const extension = audioBlob.type.includes("webm")
       ? "webm"
@@ -295,6 +298,8 @@ export default function ParkinsonPage() {
       ? t(locale, "parkinson", "recordingNotSupported")
       : recording.error === "microphone_permission_denied"
         ? t(locale, "parkinson", "micPermissionDenied")
+        : recording.error === "audio_conversion_failed"
+          ? t(locale, "parkinson", "audioConversionFailed")
         : recording.error === "recording_failed"
           ? t(locale, "parkinson", "recordingFailed")
           : null;
@@ -449,7 +454,21 @@ export default function ParkinsonPage() {
           </p>
 
           <div aria-live="polite" className="mt-6 min-h-[28px] text-sm font-semibold text-primary">
-            {result ? `${t(locale, "parkinson", "confidenceLabel")}: ${result}` : null}
+            {result ? (
+              <div>
+                <p>{`${t(locale, "parkinson", "confidenceLabel")}: ${result}`}</p>
+                {biomarkerResponse?.parkinson_inference ? (
+                  <p className="mt-1 text-xs font-medium text-muted-foreground">
+                    {t(locale, "parkinson", "directModelResultLabel")}
+                  </p>
+                ) : null}
+                {activePrediction?.message ? (
+                  <p className="mt-1 text-xs font-medium text-muted-foreground">
+                    {activePrediction.message}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             {prediction.isError ? t(locale, "parkinson", "inferenceError") : null}
           </div>
 
@@ -482,6 +501,81 @@ export default function ParkinsonPage() {
               {audioUploadMessage}
             </p>
           ) : null}
+
+          <div className="mt-8 rounded-2xl border border-primary/10 bg-primary/5 p-5 text-left">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  {t(locale, "parkinson", "biomarkerPanelTitle")}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t(locale, "parkinson", "biomarkerPanelHint")}
+                </p>
+              </div>
+              {biomarkerResponse ? (
+                <div className="text-right">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    {t(locale, "parkinson", "biomarkerMetadataLabel")}
+                  </p>
+                  <p className="mt-1 text-sm text-foreground">
+                    {biomarkerResponse.audio.sample_rate_hz} Hz | {biomarkerResponse.audio.channels} ch | {biomarkerResponse.audio.normalized_format.toUpperCase()} | {biomarkerResponse.audio.duration_seconds.toFixed(2)} s
+                  </p>
+                </div>
+              ) : null}
+            </div>
+
+            {!biomarkerResponse ? (
+              <p className="mt-4 rounded-xl bg-white/70 px-4 py-3 text-sm text-muted-foreground">
+                {t(locale, "parkinson", "biomarkerPanelEmpty")}
+              </p>
+            ) : null}
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {biomarkerCards.map((item) => (
+                <div key={item.key} className="rounded-xl bg-white/80 p-4 shadow-sm">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    {t(locale, "parkinson", "measureLabel")}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-foreground">{item.label}</p>
+                  <p className="mt-2 text-2xl font-bold text-foreground">
+                    {typeof item.value === "number"
+                      ? `${item.value.toFixed(item.decimals)}${item.unit ? ` ${item.unit}` : ""}`
+                      : t(locale, "common", "notAvailable")}
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground" title={item.description}>
+                    {item.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {biomarkerResponse ? (
+              <div className="mt-4 rounded-xl bg-white/80 p-4 shadow-sm">
+                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                  {t(locale, "parkinson", "directModelResultLabel")}
+                </p>
+                <p className="mt-2 text-sm text-foreground">
+                  {t(locale, "common", "model")}: {biomarkerResponse.parkinson_model_input.model_name}
+                </p>
+                <p className="mt-1 text-sm text-foreground">
+                  {t(locale, "parkinson", "modelVectorCoverageLabel")}: {biomarkerResponse.parkinson_model_input.feature_count}/
+                  {biomarkerResponse.parkinson_model_input.required_feature_count}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-foreground">
+                  {`${t(locale, "parkinson", "confidenceLabel")}: ${(biomarkerResponse.parkinson_inference.probability * 100).toFixed(2)}%`}
+                </p>
+                <p className="mt-1 text-sm text-foreground">
+                  {biomarkerResponse.parkinson_inference.message}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {biomarkerResponse.parkinson_model_input.note}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {biomarkerResponse.parkinson_model_bridge.note}
+                </p>
+              </div>
+            ) : null}
+          </div>
         </Card>
       </div>
 
@@ -545,36 +639,6 @@ export default function ParkinsonPage() {
       </Card>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {biomarkerCards.map((item) => (
-          <Card key={item.key} className="p-4">
-            <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{t(locale, "parkinson", "measureLabel")}</p>
-            <p className="mt-2 text-base font-semibold text-foreground">{item.label}</p>
-            <p className="mt-3 text-2xl font-bold text-foreground">
-              {typeof item.value === "number"
-                ? `${item.value.toFixed(item.decimals)}${item.unit ? ` ${item.unit}` : ""}`
-                : t(locale, "common", "notAvailable")}
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground" title={item.description}>
-              {item.description}
-            </p>
-          </Card>
-        ))}
-      </section>
-
-      {biomarkerResponse ? (
-        <Card className="p-4">
-          <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
-            {t(locale, "parkinson", "biomarkerMetadataLabel")}
-          </p>
-          <p className="mt-2 text-sm text-foreground">
-            {biomarkerResponse.audio.sample_rate_hz} Hz | {biomarkerResponse.audio.channels} ch | {biomarkerResponse.audio.normalized_format.toUpperCase()} | {biomarkerResponse.audio.duration_seconds.toFixed(2)} s
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {biomarkerResponse.parkinson_model_bridge.note}
-          </p>
-        </Card>
-      ) : null}
     </section>
   );
 }

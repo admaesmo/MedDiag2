@@ -35,8 +35,27 @@ class ParkinsonModelBridgeResponse(BaseModel):
     note: str
 
 
+class ParkinsonModelInputResponse(BaseModel):
+    model_name: str
+    features: Dict[str, float]
+    feature_count: int
+    required_feature_count: int
+    ready_for_direct_inference: bool
+    note: str
+
+
+class ParkinsonInferenceResponse(BaseModel):
+    model_name: str
+    disease_code: str
+    prediction: int
+    probability: float
+    message: str
+
+
 class VoiceBiomarkerExtractionResponse(BaseModel):
     status: str = "success"
     audio: VoiceBiomarkerAudioMetadata
     biomarkers: VoiceBiomarkerSet
     parkinson_model_bridge: ParkinsonModelBridgeResponse
+    parkinson_model_input: ParkinsonModelInputResponse
+    parkinson_inference: ParkinsonInferenceResponse

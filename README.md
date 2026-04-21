@@ -394,7 +394,7 @@ npm run dev
 
 #### Endpoint MVP de biomarcadores de voz
 
-El backend expone un endpoint ligero para extraer biomarcadores de voz con Parselmouth sin persistir el audio:
+El backend expone un endpoint ligero para analizar audio de voz sin persistirlo:
 
 ```bash
 POST /audio/biomarkers/extract
@@ -408,6 +408,9 @@ Recibe un archivo de audio por `multipart/form-data`, lo normaliza a mono, `16 k
 - `jitter_local`
 - `shimmer_local`
 - `hnr_mean`
+- `parkinson_model_bridge` con el mapeo parcial de esos biomarcadores al modelo actual
+- `parkinson_model_input` con el vector completo de `22` features que exige el modelo de Parkinson actual
+- `parkinson_inference` con la prediccion directa calculada sobre ese vector completo
 
 Ejemplo con `curl`:
 
@@ -416,7 +419,7 @@ curl -X POST http://127.0.0.1:8000/audio/biomarkers/extract ^
   -F "file=@ruta\\a\\tu_audio.wav;type=audio/wav"
 ```
 
-El JSON tambien incluye `parkinson_model_bridge`, que deja explicito que el modelo actual de Parkinson sigue requiriendo el vector completo de 22 features.
+El flujo nuevo ya puede alimentar directamente al modelo actual porque reutiliza el extractor completo de features del pipeline de audio sobre el mismo WAV normalizado. La persistencia del audio y el pipeline viejo siguen existiendo aparte para historial y procesamiento en segundo plano.
 
 ---
 

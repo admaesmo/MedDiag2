@@ -8,6 +8,8 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.schemas.voice_biomarkers import (
     ParkinsonModelBridgeResponse,
+    ParkinsonInferenceResponse,
+    ParkinsonModelInputResponse,
     VoiceBiomarkerAudioMetadata,
     VoiceBiomarkerExtractionResponse,
     VoiceBiomarkerSet,
@@ -17,9 +19,12 @@ from app.services.voice_biomarkers import (
     TARGET_WAV_FORMAT,
     VoiceBiomarkerError,
     build_parkinson_model_bridge,
+    build_parkinson_model_input,
     cleanup_prepared_audio,
+    extract_parkinson_model_features,
     extract_voice_biomarkers,
     prepare_audio_for_voice_biomarkers,
+    run_parkinson_direct_inference,
 )
 
 router = APIRouter(prefix="/audio/biomarkers", tags=["audio", "voice-biomarkers"])
@@ -28,9 +33,9 @@ router = APIRouter(prefix="/audio/biomarkers", tags=["audio", "voice-biomarkers"
 @router.post("/extract", response_model=VoiceBiomarkerExtractionResponse)
 async def extract_voice_biomarkers_endpoint(file: UploadFile = File(...)):
     """
-    Receive an audio file, normalize it to mono/16 kHz/WAV and return a
-    Parselmouth biomarker payload that can later be bridged into Parkinson
-    inference flows.
+    Receive an audio file, normalize it to mono/16 kHz/WAV and return both the
+    requested Parselmouth biomarkers and a direct inference-ready Parkinson
+    payload built from the current 22-feature model contract.
     """
 
     audio_bytes = await file.read()
@@ -49,6 +54,9 @@ async def extract_voice_biomarkers_endpoint(file: UploadFile = File(...)):
         )
         biomarkers = extract_voice_biomarkers(prepared_audio)
         bridge = build_parkinson_model_bridge(biomarkers)
+        model_features = extract_parkinson_model_features(prepared_audio)
+        model_input = build_parkinson_model_input(model_features)
+        inference = run_parkinson_direct_inference(model_features)
 
         return VoiceBiomarkerExtractionResponse(
             audio=VoiceBiomarkerAudioMetadata(
@@ -61,6 +69,8 @@ async def extract_voice_biomarkers_endpoint(file: UploadFile = File(...)):
             ),
             biomarkers=VoiceBiomarkerSet(**biomarkers),
             parkinson_model_bridge=ParkinsonModelBridgeResponse(**bridge),
+            parkinson_model_input=ParkinsonModelInputResponse(**model_input),
+            parkinson_inference=ParkinsonInferenceResponse(**inference),
         )
     except VoiceBiomarkerError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
