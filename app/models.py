@@ -102,7 +102,7 @@ class AudioRecord(Base):
 
     language_code = Column(String(10), nullable=True)
     status = Column(String(50), nullable=False, default="uploaded")
-    # status values: uploaded, processing, transcribed, failed, archived
+    # status values: uploaded, processing, processed/transcribed, failed, archived
 
     transcript_text = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
@@ -113,7 +113,7 @@ class AudioRecord(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('uploaded','processing','transcribed','failed','archived')",
+            "status IN ('uploaded','processing','processed','transcribed','failed','archived')",
             name="ck_audio_status",
         ),
     )

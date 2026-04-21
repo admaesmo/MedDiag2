@@ -25,6 +25,11 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
+    def load(self, path: str) -> bytes | None:
+        """Read and return object bytes from *path* (or None if missing)."""
+        ...
+
+    @abstractmethod
     def delete(self, path: str) -> None:
         """Remove the object at *path*."""
         ...
@@ -49,6 +54,13 @@ class LocalStorageBackend(StorageBackend):
         with open(full, "wb") as out:
             shutil.copyfileobj(file, out)
         return path
+
+    def load(self, path: str) -> bytes | None:
+        full = self._full(path)
+        if not os.path.isfile(full):
+            return None
+        with open(full, "rb") as source:
+            return source.read()
 
     def delete(self, path: str) -> None:
         full = self._full(path)

@@ -29,6 +29,8 @@ class AudioRecordOut(BaseModel):
     status: str
     transcript_text: Optional[str] = None
     notes: Optional[str] = None
+    is_ready_for_inference: bool = False
+    processing_error: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

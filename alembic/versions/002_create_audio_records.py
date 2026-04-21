@@ -41,7 +41,7 @@ def upgrade() -> None:
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
 
         sa.CheckConstraint(
-            "status IN ('uploaded','processing','transcribed','failed','archived')",
+            "status IN ('uploaded','processing','processed','transcribed','failed','archived')",
             name="ck_audio_status",
         ),
     )

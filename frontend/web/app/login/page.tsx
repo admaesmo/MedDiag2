@@ -2,28 +2,82 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { Button } from "@/components/atoms/button";
+import { Input } from "@/components/atoms/input";
+import { loginSchema, type LoginValues } from "@/features/auth/schema";
+import { isLocalAuthEnabled, localAuthDefaults } from "@/lib/auth-mode";
+import { setLocalSession } from "@/lib/local-auth";
+import { issueDevToken } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
+import { useUiStore } from "@/stores/ui-store";
+import { t } from "@/lib/i18n";
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const locale = useUiStore((state) => state.locale);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  const form = useForm<LoginValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: isLocalAuthEnabled ? localAuthDefaults.email : "",
+      password: isLocalAuthEnabled ? localAuthDefaults.password : "",
+    },
+  });
+
   const nextPath = useMemo(() => searchParams.get("next") || "/dashboard", [searchParams]);
 
-  const onLogin = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const translateError = (message?: string) => {
+    if (!message) {
+      return "";
+    }
+    if (message === "invalidEmail" || message === "minPassword6" || message === "minPassword8") {
+      return t(locale, "auth", message);
+    }
+    return message;
+  };
+
+  const onLogin = async (values: LoginValues) => {
     setError(null);
     setIsLoading(true);
 
+    if (isLocalAuthEnabled) {
+      if (
+        values.email !== localAuthDefaults.email ||
+        values.password !== localAuthDefaults.password
+      ) {
+        setIsLoading(false);
+        setError("Credenciales locales invalidas.");
+        return;
+      }
+
+      try {
+        const token = await issueDevToken(
+          localAuthDefaults.email,
+          localAuthDefaults.role,
+          localAuthDefaults.displayName,
+        );
+        setLocalSession(token.access_token, localAuthDefaults.email);
+        setIsLoading(false);
+        router.replace(nextPath);
+        router.refresh();
+        return;
+      } catch (err) {
+        setIsLoading(false);
+        setError(err instanceof Error ? err.message : "No fue posible iniciar sesion local.");
+        return;
+      }
+    }
+
     const supabase = createClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+      email: values.email,
+      password: values.password,
     });
 
     setIsLoading(false);
@@ -53,51 +107,73 @@ export default function LoginPage() {
   };
 
   return (
-    <section className="card">
-      <h1>Iniciar sesión</h1>
-      <p>Accede con email/contraseña o con tu proveedor OAuth.</p>
+    <section id="main-content" className="mx-auto mt-12 w-full max-w-lg rounded-3xl bg-surface-lowest p-8 shadow-ambient">
+      <h1 className="text-3xl font-bold">{t(locale, "auth", "login")}</h1>
+      <p className="mt-2 text-sm text-muted-foreground">{t(locale, "auth", "loginSubtitle")}</p>
 
-      <form onSubmit={onLogin}>
-        <label htmlFor="email">Email</label>
-        <input
-          id="email"
-          type="email"
-          required
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          autoComplete="email"
-        />
+      <form onSubmit={form.handleSubmit(onLogin)} className="mt-6 space-y-4">
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-muted-foreground" htmlFor="email">
+            {t(locale, "auth", "email")}
+          </label>
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            aria-invalid={Boolean(form.formState.errors.email)}
+            aria-describedby={form.formState.errors.email ? "email-error" : undefined}
+            {...form.register("email")}
+          />
+          {form.formState.errors.email ? (
+            <p id="email-error" className="mt-1 text-xs font-semibold text-red-700" role="alert">
+              {translateError(form.formState.errors.email.message)}
+            </p>
+          ) : null}
+        </div>
 
-        <label htmlFor="password" style={{ marginTop: "0.75rem" }}>
-          Contraseña
-        </label>
-        <input
-          id="password"
-          type="password"
-          required
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          autoComplete="current-password"
-        />
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-muted-foreground" htmlFor="password">
+            {t(locale, "auth", "password")}
+          </label>
+          <Input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            aria-invalid={Boolean(form.formState.errors.password)}
+            aria-describedby={form.formState.errors.password ? "password-error" : undefined}
+            {...form.register("password")}
+          />
+          {form.formState.errors.password ? (
+            <p id="password-error" className="mt-1 text-xs font-semibold text-red-700" role="alert">
+              {translateError(form.formState.errors.password.message)}
+            </p>
+          ) : null}
+        </div>
 
-        <button className="btn-primary" disabled={isLoading} style={{ marginTop: "1rem", width: "100%" }}>
-          {isLoading ? "Ingresando..." : "Grabar audio"}
-        </button>
+        <Button type="submit" className="w-full" disabled={isLoading}>
+          {isLoading ? t(locale, "auth", "submitting") : t(locale, "auth", "login")}
+        </Button>
       </form>
 
-      <div className="row" style={{ marginTop: "1rem" }}>
-        <button className="btn-secondary" onClick={() => onOAuth("google")}>
-          Continuar con Google
-        </button>
-        <button className="btn-secondary" onClick={() => onOAuth("github")}>
-          Continuar con GitHub
-        </button>
-      </div>
+      {isLocalAuthEnabled ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          Modo local activo. Usa <strong>{localAuthDefaults.email}</strong> / <strong>{localAuthDefaults.password}</strong>.
+        </p>
+      ) : (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => onOAuth("google")} aria-label={t(locale, "auth", "oauthGoogle")}>
+            {t(locale, "auth", "oauthGoogle")}
+          </Button>
+          <Button variant="secondary" onClick={() => onOAuth("github")} aria-label={t(locale, "auth", "oauthGithub")}>
+            {t(locale, "auth", "oauthGithub")}
+          </Button>
+        </div>
+      )}
 
-      {error ? <p className="error">{error}</p> : null}
+      {error ? <p className="mt-3 text-sm font-semibold text-red-700" role="alert" aria-live="assertive">{error}</p> : null}
 
-      <p className="small" style={{ marginTop: "1rem" }}>
-        ¿No tienes cuenta? <Link className="link" href="/register">Regístrate aquí</Link>
+      <p className="mt-4 text-sm text-muted-foreground">
+        {t(locale, "auth", "noAccount")} <Link className="font-semibold text-primary" href="/register">{t(locale, "auth", "registerHere")}</Link>
       </p>
     </section>
   );
