@@ -83,6 +83,39 @@ export type DevTokenResponse = {
   token_type: string;
 };
 
+export type VoiceBiomarkerAudioMetadata = {
+  original_filename: string | null;
+  content_type: string | null;
+  sample_rate_hz: number;
+  channels: number;
+  normalized_format: string;
+  duration_seconds: number;
+};
+
+export type VoiceBiomarkerSet = {
+  pitch_mean: number;
+  pitch_min: number;
+  pitch_max: number;
+  jitter_local: number;
+  shimmer_local: number;
+  hnr_mean: number;
+};
+
+export type ParkinsonModelBridgeResponse = {
+  model_name: string;
+  mapped_features: Record<string, number>;
+  missing_features: string[];
+  ready_for_direct_inference: boolean;
+  note: string;
+};
+
+export type VoiceBiomarkerExtractionResponse = {
+  status: string;
+  audio: VoiceBiomarkerAudioMetadata;
+  biomarkers: VoiceBiomarkerSet;
+  parkinson_model_bridge: ParkinsonModelBridgeResponse;
+};
+
 const mockUser: UserOut = {
   id: 12,
   email: "clinician@meddiag.local",
@@ -281,6 +314,94 @@ export async function uploadAudioMultipart(
   }
 
   return response.json() as Promise<AudioUploadResponse>;
+}
+
+export async function extractVoiceBiomarkersMultipart(
+  audioBlob: Blob,
+  fileName: string,
+): Promise<VoiceBiomarkerExtractionResponse> {
+  if (useMockApi) {
+    await delay(500);
+    const pitchMean = 118 + Math.random() * 18;
+    const pitchMin = pitchMean - (5 + Math.random() * 10);
+    const pitchMax = pitchMean + (8 + Math.random() * 14);
+    const hnrMean = 18 + Math.random() * 8;
+
+    return {
+      status: "success",
+      audio: {
+        original_filename: fileName,
+        content_type: audioBlob.type || "audio/wav",
+        sample_rate_hz: 16000,
+        channels: 1,
+        normalized_format: "wav",
+        duration_seconds: 1.8,
+      },
+      biomarkers: {
+        pitch_mean: pitchMean,
+        pitch_min: pitchMin,
+        pitch_max: pitchMax,
+        jitter_local: 0.001 + Math.random() * 0.01,
+        shimmer_local: 0.01 + Math.random() * 0.03,
+        hnr_mean: hnrMean,
+      },
+      parkinson_model_bridge: {
+        model_name: "parkinsons_model.sav",
+        mapped_features: {
+          "MDVP:Fo(Hz)": pitchMean,
+          "MDVP:Fhi(Hz)": pitchMax,
+          "MDVP:Flo(Hz)": pitchMin,
+          HNR: hnrMean,
+        },
+        missing_features: [
+          "MDVP:Jitter(%)",
+          "MDVP:Jitter(Abs)",
+          "MDVP:RAP",
+          "MDVP:PPQ",
+          "Jitter:DDP",
+          "MDVP:Shimmer",
+          "MDVP:Shimmer(dB)",
+          "Shimmer:APQ3",
+          "Shimmer:APQ5",
+          "MDVP:APQ",
+          "Shimmer:DDA",
+          "NHR",
+          "RPDE",
+          "DFA",
+          "spread1",
+          "spread2",
+          "D2",
+          "PPE",
+        ],
+        ready_for_direct_inference: false,
+        note: "Mock biomarker bridge generated locally.",
+      },
+    };
+  }
+
+  const formData = new FormData();
+  formData.append("file", audioBlob, fileName);
+
+  const response = await fetch(`${apiBaseUrl}/audio/biomarkers/extract`, {
+    method: "POST",
+    body: formData,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    let detail = `Biomarker extraction failed: ${response.status}`;
+    try {
+      const payload = (await response.json()) as { detail?: string };
+      if (payload.detail) {
+        detail = payload.detail;
+      }
+    } catch {
+      // Keep generic message if response body is not JSON.
+    }
+    throw new Error(detail);
+  }
+
+  return response.json() as Promise<VoiceBiomarkerExtractionResponse>;
 }
 
 export async function getDiagnosisHistory(accessToken: string, limit = 50): Promise<DiagnosisHistoryItem[]> {

@@ -305,18 +305,45 @@ Instala todas las librerias que el proyecto necesita:
 pip install -r requirements.txt
 ```
 
-### Paso 4: Levantar PostgreSQL local
+### Paso 4: Crear variables de entorno locales
 
-Para trabajar en local sin tocar la base de datos de Supabase, el proyecto queda configurado para usar PostgreSQL local por defecto.
+Backend (`.env` en la raiz del repo):
 
 ```bash
-docker compose up -d db
+DATABASE_URL=sqlite:///./meddiag.local.db
+MODEL_DIR=./saved_models
+ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+AUTH_PROVIDER=local
+JWT_SECRET_KEY=dev-secret-change-me
+JWT_ALGORITHM=HS256
+JWT_EXPIRATION_MINUTES=60
+STORAGE_PROVIDER=local
+STORAGE_LOCAL_PATH=./storage/audio
+MAX_AUDIO_FILE_SIZE_MB=25
 ```
 
-La conexión local esperada es:
+Frontend (`frontend/web/.env.local`):
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_USE_MOCK_API=false
+NEXT_PUBLIC_AUTH_MODE=local
+NEXT_PUBLIC_LOCAL_AUTH_EMAIL=demo@meddiag.local
+NEXT_PUBLIC_LOCAL_AUTH_PASSWORD=meddiag123
+NEXT_PUBLIC_LOCAL_AUTH_ROLE=patient
+NEXT_PUBLIC_LOCAL_AUTH_DISPLAY_NAME=Demo Local
+```
+
+Si prefieres PostgreSQL local, cambia `DATABASE_URL` a:
 
 ```bash
 postgresql+psycopg2://meddiag:meddiag@localhost:5432/meddiag
+```
+
+y levanta la base con:
+
+```bash
+docker compose up -d db
 ```
 
 ### Paso 5: Ejecutar la Aplicacion
@@ -324,13 +351,21 @@ postgresql+psycopg2://meddiag:meddiag@localhost:5432/meddiag
 Si quieres levantar todo con un solo comando:
 
 ```bash
+# Linux / macOS
 ./scripts/start-local.sh
+
+# Windows PowerShell
+.\scripts\start-local.ps1
 ```
 
 Y para detenerlo:
 
 ```bash
+# Linux / macOS
 ./scripts/stop-local.sh
+
+# Windows PowerShell
+.\scripts\stop-local.ps1
 ```
 
 #### Opcion 1: Frontend web (Next.js)
@@ -356,6 +391,32 @@ cd frontend/web
 npm install
 npm run dev
 ```
+
+#### Endpoint MVP de biomarcadores de voz
+
+El backend expone un endpoint ligero para extraer biomarcadores de voz con Parselmouth sin persistir el audio:
+
+```bash
+POST /audio/biomarkers/extract
+```
+
+Recibe un archivo de audio por `multipart/form-data`, lo normaliza a mono, `16 kHz` y `WAV` temporal, y retorna:
+
+- `pitch_mean`
+- `pitch_min`
+- `pitch_max`
+- `jitter_local`
+- `shimmer_local`
+- `hnr_mean`
+
+Ejemplo con `curl`:
+
+```bash
+curl -X POST http://127.0.0.1:8000/audio/biomarkers/extract ^
+  -F "file=@ruta\\a\\tu_audio.wav;type=audio/wav"
+```
+
+El JSON tambien incluye `parkinson_model_bridge`, que deja explicito que el modelo actual de Parkinson sigue requiriendo el vector completo de 22 features.
 
 ---
 

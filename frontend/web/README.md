@@ -1,6 +1,6 @@
-# MedDiag Web (Next.js + Supabase)
+# MedDiag Web (Next.js)
 
-Frontend nuevo para autenticación y rutas privadas usando Supabase.
+Frontend para autenticacion y rutas privadas usando Supabase o modo local de desarrollo.
 
 ## Documentacion
 
@@ -8,13 +8,23 @@ Frontend nuevo para autenticación y rutas privadas usando Supabase.
 
 ## Variables de entorno
 
-Se usa [.env.local](.env.local) con:
+Se usa `.env.local` con:
 
-- NEXT_PUBLIC_SUPABASE_URL
-- NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-- NEXT_PUBLIC_API_BASE_URL
+- `NEXT_PUBLIC_API_BASE_URL`
+- `NEXT_PUBLIC_AUTH_MODE`
+- `NEXT_PUBLIC_LOCAL_AUTH_EMAIL`
+- `NEXT_PUBLIC_LOCAL_AUTH_PASSWORD`
+- `NEXT_PUBLIC_LOCAL_AUTH_ROLE`
+- `NEXT_PUBLIC_LOCAL_AUTH_DISPLAY_NAME`
 
-El cliente también soporta fallback a NEXT_PUBLIC_SUPABASE_ANON_KEY si se define.
+Si `NEXT_PUBLIC_AUTH_MODE=local`, no necesitas Supabase para desarrollo local.
+
+Si `NEXT_PUBLIC_AUTH_MODE` no es `local`, entonces tambien necesitas:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`
+
+El cliente tambien soporta fallback a `NEXT_PUBLIC_SUPABASE_ANON_KEY` si se define.
 
 ## Ejecutar
 
@@ -24,21 +34,25 @@ npm install
 npm run dev
 ```
 
-Aplicación en http://localhost:3000.
+Aplicacion en `http://localhost:3000`.
 
 ## Rutas
 
-- /login
-- /register
-- /dashboard (privada)
-- /auth/callback (OAuth callback)
+- `/login`
+- `/register`
+- `/dashboard` (privada)
+- `/auth/callback` (OAuth callback)
 
-## Integración backend
+## Integracion backend
 
-La página privada consulta `GET /audio/me` enviando `Authorization: Bearer <access_token>`.
+La pagina privada consulta `GET /audio/me` enviando `Authorization: Bearer <access_token>`.
 
-Asegúrate de que el backend esté con:
+Asegurate de que el backend este con una de estas configuraciones:
 
-- AUTH_PROVIDER=supabase
-- SUPABASE_JWT_SECRET=<jwt secret del proyecto>
-- ALLOWED_ORIGINS=http://localhost:3000
+- Modo local:
+  - `AUTH_PROVIDER=local`
+  - `ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000`
+- Modo Supabase:
+  - `AUTH_PROVIDER=supabase`
+  - `SUPABASE_JWT_SECRET=<jwt secret del proyecto>`
+  - `ALLOWED_ORIGINS=http://localhost:3000`

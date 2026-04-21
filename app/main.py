@@ -21,6 +21,7 @@ from app.utils.validators import validate_required_features
 
 # Routers
 from app.api.auth import router as auth_router
+from app.api.voice_biomarkers import router as voice_biomarker_router
 from app.api.audio import router as audio_router
 
 # Create tables if they don't exist
@@ -41,6 +42,7 @@ app.add_middleware(
 
 # ---- Register new routers ----
 app.include_router(auth_router)
+app.include_router(voice_biomarker_router)
 app.include_router(audio_router)
 
 

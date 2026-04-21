@@ -9,6 +9,9 @@ __pycache__/
 .DS_Store
 .env
 secrets/postgres_password.txt
+.run/
+meddiag.local.db
+meddiag.local.db-*
 
 
 # Ignorar configuración de Jupyter y VSCode
