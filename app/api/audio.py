@@ -268,7 +268,9 @@ def process_audio(
             diagnosis_id=result.get("diagnosis_id"),
             prediction=result.get("prediction"),
             probability=result.get("probability"),
-            message=result.get("message")
+            message=result.get("message"),
+            missing_features=result.get("missing_features"),
+            invalid_features=result.get("invalid_features"),
         )
     except AudioPipelineError as e:
         raise HTTPException(status_code=500, detail=str(e))

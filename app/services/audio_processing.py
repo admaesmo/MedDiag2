@@ -112,7 +112,9 @@ def extract_features_from_audio(
         sample_rate: Target sample rate for processing
         
     Returns:
-        Dictionary of extracted features with PARKINSON_FEATURES keys
+        Dictionary of extracted features.
+        Features that cannot be computed in a reproducible way are left as
+        non-finite values so downstream validation can block inference.
     """
     if not LIBROSA_AVAILABLE:
         raise AudioProcessingError("Librosa is required for audio feature extraction")
@@ -155,12 +157,6 @@ def extract_features_from_audio(
             **hnr_features,
             **nonlinear_features,
         }
-        
-        # Ensure all Parkinson features are present (fill missing with 0)
-        for feature in PARKINSON_FEATURES:
-            if feature not in features:
-                features[feature] = 0.0
-                logger.warning(f"Feature {feature} not extracted, using default 0.0")
         
         return features
         
@@ -535,8 +531,9 @@ def calculate_nonlinear_features(y: np.ndarray, sr: int) -> Dict[str, float]:
     """
     Calculate nonlinear dynamics features: RPDE, DFA, D2, PPE, spread1, spread2.
     
-    These features are complex and often computed from voice recordings
-    using specialized algorithms. Here we provide approximations.
+    These features require dedicated validated implementations.
+    We intentionally mark them as unavailable to avoid feeding synthetic
+    values into medical inference.
     
     Args:
         y: Audio signal
@@ -545,37 +542,18 @@ def calculate_nonlinear_features(y: np.ndarray, sr: int) -> Dict[str, float]:
     Returns:
         Dictionary with nonlinear features
     """
-    # For now, return reasonable default values based on typical voice recordings
-    # In a production system, these would be computed using proper algorithms
-    
-    # RPDE (Recurrence Period Density Entropy) - measures voice regularity
-    # Typical range: 0.2-0.6 for Parkinson's, lower for healthy
-    rpde = 0.4 + np.random.randn() * 0.1  # Placeholder
-    
-    # DFA (Detrended Fluctuation Analysis) - scaling exponent
-    # Typical range: 0.5-1.5
-    dfa = 0.8 + np.random.randn() * 0.2  # Placeholder
-    
-    # D2 (Correlation Dimension) - complexity measure
-    # Typical range: 1.5-3.0
-    d2 = 2.3 + np.random.randn() * 0.3  # Placeholder
-    
-    # PPE (Pitch Period Entropy) - pitch regularity
-    # Typical range: 0.1-0.4
-    ppe = 0.25 + np.random.randn() * 0.1  # Placeholder
-    
-    # spread1, spread2 - related to fundamental frequency variation
-    # These are often derived from the modulation spectrum
-    spread1 = -5.0 + np.random.randn() * 1.0  # Placeholder
-    spread2 = 0.2 + np.random.randn() * 0.1   # Placeholder
-    
+    logger.info(
+        "Nonlinear Parkinson features (RPDE, DFA, D2, PPE, spread1, spread2) "
+        "are marked as unavailable until validated implementations are provided."
+    )
+    nan = float("nan")
     return {
-        "RPDE": float(rpde),
-        "DFA": float(dfa),
-        "D2": float(d2),
-        "PPE": float(ppe),
-        "spread1": float(spread1),
-        "spread2": float(spread2),
+        "RPDE": nan,
+        "DFA": nan,
+        "D2": nan,
+        "PPE": nan,
+        "spread1": nan,
+        "spread2": nan,
     }
 
 

@@ -18,10 +18,15 @@ from app.models import AudioRecord, Diagnosis, DiagnosisDetail, Disease, User
 from app.model_predict import predict_parkinson, PARK_FEATURE_ORDER
 from app.services.audio_processing import (
     extract_features_from_audio, 
-    process_audio_file,
     AudioProcessingError
 )
 from app.services.storage_service import get_storage_backend
+from app.services.voice_biomarkers import (
+    VoiceBiomarkerError,
+    prepare_audio_for_voice_biomarkers,
+    cleanup_prepared_audio,
+    build_parkinson_features_parselmouth_primary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +36,7 @@ class AudioPipelineError(Exception):
     pass
 
 
-def validate_features_for_prediction(features: Dict[str, float]) -> Tuple[bool, List[str]]:
+def validate_features_for_prediction(features: Dict[str, float]) -> Tuple[bool, List[str], List[str]]:
     """
     Validate that all required Parkinson features are present and have valid values.
     
@@ -39,9 +44,10 @@ def validate_features_for_prediction(features: Dict[str, float]) -> Tuple[bool, 
         features: Dictionary of extracted acoustic features
         
     Returns:
-        Tuple of (is_valid, missing_features)
+        Tuple of (is_valid, missing_features, invalid_features)
     """
     missing_features = []
+    invalid_features = []
     
     for feature in PARK_FEATURE_ORDER:
         if feature not in features:
@@ -51,9 +57,9 @@ def validate_features_for_prediction(features: Dict[str, float]) -> Tuple[bool, 
         value = features[feature]
         if not isinstance(value, (int, float)) or not float('-inf') < value < float('inf'):
             # NaN or infinite values are invalid
-            missing_features.append(feature)
+            invalid_features.append(feature)
     
-    return len(missing_features) == 0, missing_features
+    return len(missing_features) == 0 and len(invalid_features) == 0, missing_features, invalid_features
 
 
 def store_extracted_features(
@@ -61,6 +67,7 @@ def store_extracted_features(
     audio_record_id: int,
     features: Dict[str, float],
     diagnosis_id: Optional[int] = None,
+    feature_validation: Optional[Dict[str, object]] = None,
 ) -> None:
     """
     Store extracted features in the audio record as JSON.
@@ -79,6 +86,8 @@ def store_extracted_features(
     }
     if diagnosis_id is not None:
         notes_payload["diagnosis_id"] = diagnosis_id
+    if feature_validation:
+        notes_payload["feature_validation"] = feature_validation
 
     # Merge any existing non-JSON notes as metadata.
     if audio_record.notes:
@@ -110,6 +119,50 @@ def store_extracted_features(
         audio_record.status = "transcribed"
         audio_record.updated_at = datetime.now(timezone.utc)
         db.commit()
+
+
+def store_partial_features(
+    db: Session,
+    audio_record_id: int,
+    features: Dict[str, float],
+    missing_features: List[str],
+    invalid_features: List[str],
+    message: str,
+) -> None:
+    """
+    Persist extracted-but-incomplete features with explicit traceability and
+    mark the audio record as not ready for inference.
+    """
+    audio_record = db.query(AudioRecord).filter(AudioRecord.id == audio_record_id).first()
+    if not audio_record:
+        raise AudioPipelineError(f"Audio record {audio_record_id} not found")
+
+    notes_payload = {
+        "extracted_features": features,
+        "partial_features": {
+            "ready_for_inference": False,
+            "missing_features": missing_features,
+            "invalid_features": invalid_features,
+            "reason": message,
+        },
+        "processing_error": message,
+    }
+
+    if audio_record.notes:
+        try:
+            existing_notes = json.loads(audio_record.notes)
+            if isinstance(existing_notes, dict):
+                existing_notes.update(notes_payload)
+                notes_payload = existing_notes
+            else:
+                notes_payload["original_notes"] = existing_notes
+        except json.JSONDecodeError:
+            notes_payload["original_notes"] = audio_record.notes
+
+    audio_record.notes = json.dumps(notes_payload, indent=2)
+    audio_record.status = "failed"
+    audio_record.updated_at = datetime.now(timezone.utc)
+    db.commit()
 
 
 def create_parkinson_diagnosis(
@@ -232,31 +285,79 @@ def process_audio_pipeline(
         audio_record.updated_at = datetime.now(timezone.utc)
         db.commit()
         
-        # Extract features using audio_processing service
-        features = process_audio_file(audio_record_id, db)
-        if not features:
-            # Fallback: try direct extraction
-            logger.info(f"process_audio_file returned None, trying direct extraction")
-            backend = get_storage_backend()
-            audio_bytes = backend.load(audio_record.storage_path)
-            if not audio_bytes:
-                raise AudioProcessingError(f"Could not load audio file from storage")
-            
+        backend = get_storage_backend()
+        audio_bytes = backend.load(audio_record.storage_path)
+        if not audio_bytes:
+            raise AudioProcessingError("Could not load audio file from storage")
+
+        # Default extraction route: Parselmouth-first.
+        prepared_audio = None
+        try:
+            prepared_audio = prepare_audio_for_voice_biomarkers(
+                audio_bytes=audio_bytes,
+                source_name=audio_record.original_filename or audio_record.stored_filename,
+            )
+            features = build_parkinson_features_parselmouth_primary(prepared_audio)
+            audio_record.duration_seconds = prepared_audio.duration_seconds
+            db.commit()
+        except VoiceBiomarkerError as exc:
+            logger.warning(
+                "Parselmouth-first extraction failed for audio %s, using support extractor fallback. Error: %s",
+                audio_record_id,
+                exc,
+            )
             features = extract_features_from_audio(
                 audio_bytes,
                 source_name=audio_record.original_filename or audio_record.stored_filename,
             )
+        finally:
+            cleanup_prepared_audio(prepared_audio)
         
         # Validate features
-        is_valid, missing_features = validate_features_for_prediction(features)
+        is_valid, missing_features, invalid_features = validate_features_for_prediction(features)
         if not is_valid:
-            logger.warning(f"Missing features: {missing_features}, using available features")
+            message = (
+                "Incomplete Parkinson feature vector. "
+                "Inference was blocked to avoid unreliable predictions."
+            )
+            logger.warning(
+                "%s Missing features=%s, invalid features=%s",
+                message,
+                missing_features,
+                invalid_features,
+            )
+            store_partial_features(
+                db=db,
+                audio_record_id=audio_record_id,
+                features=features,
+                missing_features=missing_features,
+                invalid_features=invalid_features,
+                message=message,
+            )
+            return {
+                "audio_record_id": audio_record_id,
+                "status": "partial_features",
+                "features": features,
+                "missing_features": missing_features,
+                "invalid_features": invalid_features,
+                "message": message,
+            }
         
         # Create Parkinson diagnosis
         diagnosis = create_parkinson_diagnosis(db, user_id, features, audio_record_id)
 
         # Store features in audio record with diagnosis linkage
-        store_extracted_features(db, audio_record_id, features, diagnosis.id)
+        store_extracted_features(
+            db,
+            audio_record_id,
+            features,
+            diagnosis.id,
+            feature_validation={
+                "ready_for_inference": True,
+                "missing_features": [],
+                "invalid_features": [],
+            },
+        )
         
         logger.info(f"Successfully processed audio pipeline for record {audio_record_id}")
         
