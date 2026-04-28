@@ -14,6 +14,24 @@ El sistema fue construido utilizando **FastAPI, Next.js y Python**, integrando m
 
 ---
 
+## Actualización Arquitectura 2.0 (Audio Parkinson)
+
+Durante la iteración reciente se realizaron cambios para alinear el proyecto con la evolución arquitectónica de MedDiag2 enfocada en biomarcadores de voz.
+
+### Cambios técnicos implementados
+
+- **Extractor Parselmouth-first en el pipeline principal**: el flujo de `POST /audio/{id}/process` ahora prioriza Parselmouth para biomarcadores clínicos clave y usa extracción de soporte como fallback.
+- **Bloqueo de inferencia con features incompletas**: se formalizó el estado de respuesta `partial_features` para evitar predicciones con vector inválido o no finito.
+- **Mejor trazabilidad de extracción**: se persisten señales de validación de features en `notes` del audio procesado.
+- **Prueba de calidad por usuario antes de extracción**: en la pantalla de Parkinson se añadió previsualización de la grabación con botón de reproducir antes de iniciar extracción/subida.
+
+### Documentos de investigación y justificación
+
+- Investigación técnica base de biomarcadores y librerías: [INVESTIGACION_BIOMARCADORES_VOZ_PARKINSON.markdown.md](/home/aetaller2/Documentos/proyectos/MedDiag2/INVESTIGACION_BIOMARCADORES_VOZ_PARKINSON.markdown.md)
+- Guía arquitectónica objetivo 2.0 y roadmap: [GUIA_ARQUITECTURA_MEDDIAG2_2.0.md](/home/aetaller2/Documentos/proyectos/MedDiag2/GUIA_ARQUITECTURA_MEDDIAG2_2.0.md)
+
+---
+
 ## Objetivos del Proyecto
 
 ### Objetivo General
@@ -30,9 +48,6 @@ Desarrollar un sistema de apoyo diagnostico basado en inteligencia artificial qu
 
 ---
 
-## Tecnologías Utilizadas
-
-| Tecnología | Versión | Para qué se usa |
 |-----------|---------|--------------------|
 | **Python** | 3.10+ | Lenguaje principal de programación |
 | **Next.js** | 13+ | Para crear la interfaz web |
@@ -65,6 +80,7 @@ MedDiag implementa tres modelos de clasificación binaria especializados en la p
 #### 2. **Predictor de Enfermedades Cardiovasculares**
 - **Archivo del modelo:** `heart_disease_model.sav`
 - **Características de entrada:** 13 variables clínicas
+Si vas a correr el proyecto en local en Linux, asegúrate también de tener `node` y `npm` instalados para el frontend.
   - Edad, Sexo, Tipo de dolor en el pecho
   - Presión arterial, Colesterol sérico
   - Glucosa en ayunas, Resultados ECG
@@ -141,7 +157,6 @@ El proceso de entrenamiento de cada modelo sigue estos pasos:
    └─ Imputación de valores faltantes (media/mediana)
    └─ Feature Scaling (StandardScaler)
    └─ Tratamiento de desbalance de clases (SMOTE)
-
 3. DIVISIÓN DE DATOS
    └─ Train: 70% (2,457 samples en total)
    └─ Validation: 15% (525 samples)
@@ -191,7 +206,6 @@ Cada modelo es evaluado con métricas clínico-médicas:
 | **F1-Score** | Media armónica P-R | Balance Precision-Recall |
 | **AUC-ROC** | Area bajo curva ROC | Capacidad discriminativa |
 
-**Nota Clínica:** En diagnóstico médico se prioriza Recall/Sensitivity para no perder casos positivos, aunque implique más falsos positivos que son revisados clínicamente.
 
 ---
 
@@ -345,6 +359,54 @@ y levanta la base con:
 ```bash
 docker compose up -d db
 ```
+
+### Script completo para correr en local después de clonar
+
+Si quieres ejecutar backend y frontend con una sola secuencia, usa este flujo desde la raiz del repositorio:
+
+```bash
+# 1) Crear y activar el entorno virtual
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 2) Instalar dependencias del backend
+pip install -r requirements.txt
+
+# 3) Crear variables de entorno del backend
+cat > .env <<'EOF'
+DATABASE_URL=sqlite:///./meddiag.local.db
+MODEL_DIR=./saved_models
+ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+AUTH_PROVIDER=local
+JWT_SECRET_KEY=dev-secret-change-me
+JWT_ALGORITHM=HS256
+JWT_EXPIRATION_MINUTES=60
+STORAGE_PROVIDER=local
+STORAGE_LOCAL_PATH=./storage/audio
+MAX_AUDIO_FILE_SIZE_MB=25
+EOF
+
+# 4) Crear variables de entorno del frontend
+cat > frontend/web/.env.local <<'EOF'
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_USE_MOCK_API=false
+NEXT_PUBLIC_AUTH_MODE=local
+NEXT_PUBLIC_LOCAL_AUTH_EMAIL=demo@meddiag.local
+NEXT_PUBLIC_LOCAL_AUTH_PASSWORD=meddiag123
+NEXT_PUBLIC_LOCAL_AUTH_ROLE=patient
+NEXT_PUBLIC_LOCAL_AUTH_DISPLAY_NAME=Demo Local
+EOF
+
+# 5) Instalar dependencias del frontend
+cd frontend/web
+npm install
+
+# 6) Volver a la raiz y levantar todo
+cd ../..
+./scripts/start-local.sh
+```
+
+Si tu sistema no tiene `python3-venv`, `pip`, `node` o `npm`, instala esos paquetes antes de ejecutar el script.
 
 ### Paso 5: Ejecutar la Aplicacion
 

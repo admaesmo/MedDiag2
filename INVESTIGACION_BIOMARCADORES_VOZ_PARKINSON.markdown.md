@@ -317,7 +317,7 @@ Esto permitiría avanzar en evaluación de librerías y biomarcadores con una ru
 
 ---
 
-## 10. Bibliografía base recomendada
+## 10. Bibliografía base 
 
 ### Biomarcadores de voz en Parkinson
 
