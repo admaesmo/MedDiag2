@@ -29,7 +29,7 @@ def _is_admin(db: Session, user: User) -> bool:
 
 
 def _is_ready_status(status_value: str) -> bool:
-    return status_value in {"processed", "transcribed"}
+    return status_value in {"inference_completed", "processed", "transcribed"}
 
 
 def _extract_processing_error(notes: str | None) -> str | None:
@@ -48,6 +48,10 @@ def _extract_processing_error(notes: str | None) -> str | None:
 
 
 def _to_audio_record_out(record) -> AudioRecordOut:
+    latest_features = None
+    if getattr(record, "biomarker_features", None):
+        latest_features = sorted(record.biomarker_features, key=lambda item: (item.created_at, item.id))[-1]
+
     return AudioRecordOut(
         id=record.id,
         uuid=record.uuid,
@@ -61,7 +65,9 @@ def _to_audio_record_out(record) -> AudioRecordOut:
         status=record.status,
         transcript_text=record.transcript_text,
         notes=record.notes,
-        is_ready_for_inference=_is_ready_status(record.status),
+        is_ready_for_inference=bool(
+            latest_features.ready_for_inference if latest_features else _is_ready_status(record.status)
+        ),
         processing_error=_extract_processing_error(record.notes),
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -221,8 +227,10 @@ from app.services.audio_pipeline import (
     process_audio_pipeline,
     batch_process_user_audio,
     get_audio_analysis_summary,
+    get_latest_biomarker_features,
     AudioPipelineError
 )
+from app.services.audio_quality import get_latest_audio_quality_report
 
 
 @router.post("/{audio_id}/process", response_model=AudioProcessingResponse)
@@ -243,7 +251,7 @@ def process_audio(
     if record.user_id != current_user.id and not _is_admin(db, current_user):
         raise HTTPException(status_code=403, detail="Access denied.")
 
-    if record.status == "processing":
+    if record.status in {"processing", "preprocessing", "quality_checked"}:
         return AudioProcessingResponse(
             audio_record_id=record.id,
             status="processing",
@@ -345,6 +353,20 @@ def get_audio_features(
     if record.user_id != current_user.id and not _is_admin(db, current_user):
         raise HTTPException(status_code=403, detail="Access denied.")
     
+    feature_row = get_latest_biomarker_features(db, audio_id)
+    if feature_row:
+        return {
+            "audio_id": audio_id,
+            "feature_status": feature_row.feature_status,
+            "ready_for_inference": feature_row.ready_for_inference,
+            "extractor_version": feature_row.extractor_version,
+            "feature_schema_version": feature_row.feature_schema_version,
+            "missing_features": feature_row.missing_features_json or [],
+            "invalid_features": feature_row.invalid_features_json or [],
+            "features": feature_row.features_json,
+        }
+
+    # Legacy fallback for records created before biomarker_features existed.
     if not _is_ready_status(record.status) or not record.notes:
         raise HTTPException(
             status_code=400, 
@@ -365,3 +387,40 @@ def get_audio_features(
         return {"audio_id": audio_id, "features": features}
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Failed to parse audio features.")
+
+
+@router.get("/{audio_id}/quality")
+def get_audio_quality(
+    audio_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get the latest quality-control report for an audio record.
+    """
+    record = audio_service.get_audio_record(db, audio_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Audio record not found.")
+
+    if record.user_id != current_user.id and not _is_admin(db, current_user):
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    report = get_latest_audio_quality_report(db, audio_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="No quality report available for this audio.")
+
+    return {
+        "audio_id": audio_id,
+        "quality_score": report.quality_score,
+        "is_valid": report.is_valid,
+        "quality_status": report.quality_status,
+        "noise_level": report.noise_level,
+        "clipping": report.clipping,
+        "silence_ratio": report.silence_ratio,
+        "rms": report.rms,
+        "peak_amplitude": report.peak_amplitude,
+        "stability_score": report.stability_score,
+        "rejection_reason": report.rejection_reason,
+        "metrics": report.metrics_json or {},
+        "created_at": report.created_at,
+    }
