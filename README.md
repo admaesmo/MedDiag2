@@ -14,6 +14,24 @@ El sistema fue construido utilizando **FastAPI, Next.js y Python**, integrando m
 
 ---
 
+## Actualización Arquitectura 2.0 (Audio Parkinson)
+
+Durante la iteración reciente se realizaron cambios para alinear el proyecto con la evolución arquitectónica de MedDiag2 enfocada en biomarcadores de voz.
+
+### Cambios técnicos implementados
+
+- **Extractor Parselmouth-first en el pipeline principal**: el flujo de `POST /audio/{id}/process` ahora prioriza Parselmouth para biomarcadores clínicos clave y usa extracción de soporte como fallback.
+- **Bloqueo de inferencia con features incompletas**: se formalizó el estado de respuesta `partial_features` para evitar predicciones con vector inválido o no finito.
+- **Mejor trazabilidad de extracción**: se persisten señales de validación de features en `notes` del audio procesado.
+- **Prueba de calidad por usuario antes de extracción**: en la pantalla de Parkinson se añadió previsualización de la grabación con botón de reproducir antes de iniciar extracción/subida.
+
+### Documentos de investigación y justificación
+
+- Investigación técnica base de biomarcadores y librerías: [INVESTIGACION_BIOMARCADORES_VOZ_PARKINSON.markdown.md](/home/aetaller2/Documentos/proyectos/MedDiag2/INVESTIGACION_BIOMARCADORES_VOZ_PARKINSON.markdown.md)
+- Guía arquitectónica objetivo 2.0 y roadmap: [GUIA_ARQUITECTURA_MEDDIAG2_2.0.md](/home/aetaller2/Documentos/proyectos/MedDiag2/GUIA_ARQUITECTURA_MEDDIAG2_2.0.md)
+
+---
+
 ## Objetivos del Proyecto
 
 ### Objetivo General
