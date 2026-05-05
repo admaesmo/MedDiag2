@@ -1,9 +1,11 @@
-"""Deterministic nonlinear voice feature extraction (base version).
+"""Deterministic nonlinear voice feature extraction.
 
 Implements practical approximations for:
 - DFA (Detrended Fluctuation Analysis)
 - D2 (Correlation Dimension via Grassberger-Procaccia style estimator)
 - PPE (Pitch Period Entropy)
+- RPDE (Recurrence Period Density Entropy approximation)
+- spread1/spread2 (distributional descriptors over log-pitch)
 """
 
 from __future__ import annotations
@@ -145,6 +147,76 @@ def compute_ppe(f0: np.ndarray) -> float:
     return float(entropy / max_entropy)
 
 
+def compute_rpde(f0: np.ndarray, max_lag: int = 120) -> float:
+    """
+    Approximate RPDE from pitch period recurrence lags.
+
+    Uses first-return lag distribution over normalized period sequence.
+    Output is normalized entropy in [0, 1] when possible.
+    """
+    pitch = np.asarray(f0, dtype=np.float64)
+    pitch = pitch[np.isfinite(pitch) & (pitch > 0)]
+    if pitch.size < 30:
+        raise NonlinearFeatureError("Not enough voiced pitch points for RPDE")
+
+    periods = 1.0 / pitch
+    periods = (periods - np.mean(periods)) / (np.std(periods) + 1e-12)
+
+    eps = 0.2
+    lags = []
+    n = periods.size
+
+    for i in range(n - 2):
+        upper = min(n, i + max_lag + 1)
+        found = False
+        for j in range(i + 1, upper):
+            if abs(periods[j] - periods[i]) <= eps:
+                lags.append(j - i)
+                found = True
+                break
+        if not found:
+            continue
+
+    if len(lags) < 15:
+        raise NonlinearFeatureError("Insufficient recurrence lags for RPDE")
+
+    hist, _ = np.histogram(lags, bins=np.arange(1, max_lag + 2), density=False)
+    p = hist.astype(np.float64)
+    p = p / (np.sum(p) + 1e-12)
+    p = p[p > 0]
+
+    entropy = -np.sum(p * np.log(p))
+    max_entropy = np.log(max_lag)
+    if max_entropy <= 0:
+        raise NonlinearFeatureError("Invalid RPDE normalization")
+
+    return float(entropy / max_entropy)
+
+
+def compute_spread_features(f0: np.ndarray) -> Dict[str, float]:
+    """
+    Approximate spread1/spread2 from log-pitch distribution.
+
+    spread1: lower-tail displacement from median (typically negative).
+    spread2: robust dispersion over centered log-pitch (positive).
+    """
+    pitch = np.asarray(f0, dtype=np.float64)
+    pitch = pitch[np.isfinite(pitch) & (pitch > 0)]
+    if pitch.size < 20:
+        raise NonlinearFeatureError("Not enough voiced pitch points for spread features")
+
+    lp = np.log(pitch)
+    centered = lp - np.median(lp)
+
+    p10 = np.percentile(centered, 10)
+    p90 = np.percentile(centered, 90)
+    iqr = np.percentile(centered, 75) - np.percentile(centered, 25)
+
+    spread1 = float(p10)
+    spread2 = float(0.5 * (p90 - p10) + 0.5 * iqr)
+    return {"spread1": spread1, "spread2": spread2}
+
+
 def compute_nonlinear_features(y: np.ndarray, f0: np.ndarray) -> Dict[str, float]:
     """Return deterministic nonlinear feature subset for current iteration."""
 
@@ -165,12 +237,15 @@ def compute_nonlinear_features(y: np.ndarray, f0: np.ndarray) -> Dict[str, float
     except Exception:
         features["PPE"] = 0.0
 
-    # Keep compatibility with existing full feature schema.
-    if "spread1" not in features:
-        features["spread1"] = 0.0
-    if "spread2" not in features:
-        features["spread2"] = 0.0
-    if "RPDE" not in features:
+    try:
+        features["RPDE"] = compute_rpde(f0)
+    except Exception:
         features["RPDE"] = 0.0
+
+    try:
+        features.update(compute_spread_features(f0))
+    except Exception:
+        features["spread1"] = 0.0
+        features["spread2"] = 0.0
 
     return features
