@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from app.models import AudioRecord, Diagnosis, DiagnosisDetail, Disease, User
+from app.models import AudioRecord, BiomarkerFeature, Diagnosis, DiagnosisDetail, Disease, User
 from app.model_predict import predict_parkinson, PARK_FEATURE_ORDER
 from app.services.audio_processing import (
     extract_features_from_audio, 
@@ -24,6 +24,8 @@ from app.services.audio_processing import (
 from app.services.storage_service import get_storage_backend
 
 logger = logging.getLogger(__name__)
+FEATURE_EXTRACTOR_VERSION = "audio-processing+nonlinear-v1"
+FEATURE_SCHEMA_VERSION = "parkinson-oxford-22-v1"
 
 
 class AudioPipelineError(Exception):
@@ -110,6 +112,66 @@ def store_extracted_features(
         audio_record.status = "transcribed"
         audio_record.updated_at = datetime.now(timezone.utc)
         db.commit()
+
+
+def store_biomarker_feature_set(
+    db: Session,
+    audio_record_id: int,
+    features: Dict[str, float],
+    missing_features: List[str],
+    extractor_version: str = FEATURE_EXTRACTOR_VERSION,
+    feature_schema_version: str = FEATURE_SCHEMA_VERSION,
+) -> BiomarkerFeature:
+    payload = {k: float(v) for k, v in features.items()}
+    missing_payload = list(missing_features)
+
+    row = db.query(BiomarkerFeature).filter(
+        BiomarkerFeature.audio_record_id == audio_record_id,
+        BiomarkerFeature.extractor_version == extractor_version,
+        BiomarkerFeature.feature_schema_version == feature_schema_version,
+    ).first()
+
+    if row is None:
+        row = BiomarkerFeature(
+            audio_record_id=audio_record_id,
+            extractor_version=extractor_version,
+            feature_schema_version=feature_schema_version,
+            features_json=json.dumps(payload, indent=2),
+            missing_features_json=json.dumps(missing_payload),
+            is_partial=bool(missing_payload),
+        )
+        db.add(row)
+    else:
+        row.features_json = json.dumps(payload, indent=2)
+        row.missing_features_json = json.dumps(missing_payload)
+        row.is_partial = bool(missing_payload)
+
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def get_latest_feature_set(db: Session, audio_record_id: int) -> Optional[BiomarkerFeature]:
+    return (
+        db.query(BiomarkerFeature)
+        .filter(BiomarkerFeature.audio_record_id == audio_record_id)
+        .order_by(BiomarkerFeature.created_at.desc())
+        .first()
+    )
+
+
+def load_feature_set_payload(row: Optional[BiomarkerFeature]) -> Dict[str, float]:
+    if row is None:
+        return {}
+
+    try:
+        payload = json.loads(row.features_json or "{}")
+        if isinstance(payload, dict):
+            return {str(k): float(v) for k, v in payload.items()}
+    except Exception:
+        return {}
+
+    return {}
 
 
 def create_parkinson_diagnosis(
@@ -205,14 +267,13 @@ def process_audio_pipeline(
     # Check if already processed
     if audio_record.status in {"processed", "transcribed"}:
         logger.info(f"Audio record {audio_record_id} already processed")
-        # Try to extract features from notes
-        features = {}
+        features = load_feature_set_payload(get_latest_feature_set(db, audio_record_id))
         if audio_record.notes:
             try:
                 notes_data = json.loads(audio_record.notes)
-                if 'extracted_features' in notes_data:
-                    features = notes_data['extracted_features']
-            except:
+                if "extracted_features" in notes_data and not features:
+                    features = notes_data["extracted_features"]
+            except Exception:
                 pass
         
         if features:
@@ -251,6 +312,13 @@ def process_audio_pipeline(
         is_valid, missing_features = validate_features_for_prediction(features)
         if not is_valid:
             logger.warning(f"Missing features: {missing_features}, using available features")
+
+        feature_set = store_biomarker_feature_set(
+            db=db,
+            audio_record_id=audio_record_id,
+            features=features,
+            missing_features=missing_features,
+        )
         
         # Create Parkinson diagnosis
         diagnosis = create_parkinson_diagnosis(db, user_id, features, audio_record_id)
@@ -267,7 +335,11 @@ def process_audio_pipeline(
             "diagnosis_id": diagnosis.id,
             "prediction": "positive" if diagnosis.final_description and "detected" in diagnosis.final_description.lower() else "negative",
             "probability": float(next((d.probability for d in diagnosis.details), 0.0)),
-            "message": diagnosis.final_description
+            "message": diagnosis.final_description,
+            "feature_set_id": feature_set.id,
+            "extractor_version": feature_set.extractor_version,
+            "feature_schema_version": feature_set.feature_schema_version,
+            "partial_features": feature_set.is_partial,
         }
         
     except Exception as e:
@@ -348,22 +420,23 @@ def get_audio_analysis_summary(db: Session, user_id: int) -> Dict:
     # Extract features from processed audio
     processed_features = []
     for record in audio_records:
-        if record.status == "processed" and record.notes:
+        if record.status == "processed":
             try:
-                notes_data = json.loads(record.notes)
-                if 'extracted_features' in notes_data:
-                    features = notes_data['extracted_features']
-                    # Add basic feature summary
-                    if 'MDVP:Fo(Hz)' in features:
-                        processed_features.append({
-                            'audio_id': record.id,
-                            'created_at': record.created_at,
-                            'fundamental_frequency': features['MDVP:Fo(Hz)'],
-                            'jitter': features.get('MDVP:Jitter(%)', 0),
-                            'shimmer': features.get('MDVP:Shimmer', 0),
-                            'hnr': features.get('HNR', 0)
-                        })
-            except:
+                features = load_feature_set_payload(get_latest_feature_set(db, record.id))
+                if not features and record.notes:
+                    notes_data = json.loads(record.notes)
+                    features = notes_data.get("extracted_features", {})
+
+                if "MDVP:Fo(Hz)" in features:
+                    processed_features.append({
+                        "audio_id": record.id,
+                        "created_at": record.created_at,
+                        "fundamental_frequency": features["MDVP:Fo(Hz)"],
+                        "jitter": features.get("MDVP:Jitter(%)", 0),
+                        "shimmer": features.get("MDVP:Shimmer", 0),
+                        "hnr": features.get("HNR", 0),
+                    })
+            except Exception:
                 continue
     
     return {

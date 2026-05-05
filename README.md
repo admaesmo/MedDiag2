@@ -554,3 +554,32 @@ Aprendimos mucho durante este proyecto, desde como funcionan los modelos de Mach
 **© 2025 - Proyecto Integrador - Ingenieria de Sistemas**
 
 *Medellín, Colombia*
+
+---
+
+## Evolución técnica
+
+### Estado actual (audio y biomarcadores)
+
+- El proyecto ya procesa audio y ejecuta inferencia de Parkinson de extremo a extremo.
+- Se incorporó un **Feature Store inicial** para desacoplar features del campo `notes`.
+- Se agregó versionado de extracción con `extractor_version` y `feature_schema_version`.
+- Se implementó extractor no lineal base **determinista** para `DFA`, `D2` y `PPE`.
+
+### Cambios recientes (rama `marcadoresNL`)
+
+- Nueva entidad `biomarker_features` (modelo + migración).
+- `GET /audio/{id}/features` ahora prioriza Feature Store y conserva fallback a `notes`.
+- Eliminación de placeholders aleatorios para no lineales base en el pipeline activo.
+
+### Documentación de referencia para onboarding
+
+- [GUIA_ARQUITECTURA_MEDDIAG2_2.0.md](/home/aetaller2/Documentos/proyectos/MedDiag2/GUIA_ARQUITECTURA_MEDDIAG2_2.0.md)
+- [INVESTIGACION_BIOMARCADORES_VOZ_PARKINSON.markdown.md](/home/aetaller2/Documentos/proyectos/MedDiag2/INVESTIGACION_BIOMARCADORES_VOZ_PARKINSON.markdown.md)
+- [HISTORIA_TECNICA_BIOMARCADORES_MEDDIAG2.md](/home/aetaller2/Documentos/proyectos/MedDiag2/HISTORIA_TECNICA_BIOMARCADORES_MEDDIAG2.md)
+
+### Próximos pasos
+
+1. Implementar Quality Control Service y `audio_quality_reports`.
+2. Completar no lineales restantes (`RPDE`, `spread1`, `spread2`) con método reproducible.
+3. Desacoplar inferencia con `inference_runs` y endpoints dedicados (`/audio/{id}/predict`, `/diagnoses/{id}`).

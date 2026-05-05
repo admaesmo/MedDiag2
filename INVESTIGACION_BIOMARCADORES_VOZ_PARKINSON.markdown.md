@@ -1,5 +1,8 @@
 # Investigación Base para Extracción de Biomarcadores de Voz en Parkinson
 
+Trazabilidad del proyecto y hoja de evolución técnica:
+[Historia Técnica de Biomarcadores en MedDiag2](/home/aetaller2/Documentos/proyectos/MedDiag2/HISTORIA_TECNICA_BIOMARCADORES_MEDDIAG2.md)
+
 ## 1. Propósito del documento
 
 Este documento resume los hallazgos técnicos del estado actual del proyecto MedDiag en la rama `mejoras-audio`, con el fin de servir como insumo para:

@@ -221,6 +221,8 @@ from app.services.audio_pipeline import (
     process_audio_pipeline,
     batch_process_user_audio,
     get_audio_analysis_summary,
+    get_latest_feature_set,
+    load_feature_set_payload,
     AudioPipelineError
 )
 
@@ -343,23 +345,31 @@ def get_audio_features(
     if record.user_id != current_user.id and not _is_admin(db, current_user):
         raise HTTPException(status_code=403, detail="Access denied.")
     
-    if not _is_ready_status(record.status) or not record.notes:
+    if not _is_ready_status(record.status):
         raise HTTPException(
             status_code=400, 
             detail="Audio not processed or no features available."
         )
-    
+
+    # Primary source: feature store
+    feature_row = get_latest_feature_set(db, audio_id)
+    if feature_row is not None:
+        return {
+            "audio_id": audio_id,
+            "features": load_feature_set_payload(feature_row),
+            "feature_set_id": feature_row.id,
+            "extractor_version": feature_row.extractor_version,
+            "feature_schema_version": feature_row.feature_schema_version,
+            "partial_features": feature_row.is_partial,
+        }
+
+    # Backward compatibility: notes payload
+    if not record.notes:
+        raise HTTPException(status_code=404, detail="No feature set found for this audio.")
+
     try:
         notes_data = json.loads(record.notes)
         features = notes_data.get("extracted_features", {})
-        
-        if not features:
-            # Try to find features in the notes structure
-            for key, value in notes_data.items():
-                if isinstance(value, dict) and any(f in value for f in ["MDVP:Fo(Hz)", "jitter", "shimmer"]):
-                    features = value
-                    break
-        
         return {"audio_id": audio_id, "features": features}
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Failed to parse audio features.")

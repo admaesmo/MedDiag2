@@ -119,6 +119,37 @@ class AudioRecord(Base):
     )
 
     user = relationship("User", back_populates="audio_records")
+    biomarker_feature_sets = relationship(
+        "BiomarkerFeature",
+        back_populates="audio_record",
+        cascade="all, delete-orphan",
+    )
+
+
+class BiomarkerFeature(Base):
+    __tablename__ = "biomarker_features"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    audio_record_id = Column(Integer, ForeignKey("audio_records.id", ondelete="CASCADE"), nullable=False)
+    extractor_version = Column(String(100), nullable=False)
+    feature_schema_version = Column(String(100), nullable=False)
+    features_json = Column(Text, nullable=False)
+    missing_features_json = Column(Text, nullable=True)
+    is_partial = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "audio_record_id",
+            "extractor_version",
+            "feature_schema_version",
+            name="uq_audio_feature_version",
+        ),
+    )
+
+    audio_record = relationship("AudioRecord", back_populates="biomarker_feature_sets")
 
 
 # ---------------------------------------------------------------------------
