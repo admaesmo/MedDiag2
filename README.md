@@ -310,7 +310,7 @@ pip install -r requirements.txt
 Backend (`.env` en la raiz del repo):
 
 ```bash
-DATABASE_URL=sqlite:///./meddiag.local.db
+DATABASE_URL=postgresql+psycopg2://meddiag:meddiag@localhost:5432/meddiag
 MODEL_DIR=./saved_models
 ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 AUTH_PROVIDER=local
@@ -334,13 +334,13 @@ NEXT_PUBLIC_LOCAL_AUTH_ROLE=patient
 NEXT_PUBLIC_LOCAL_AUTH_DISPLAY_NAME=Demo Local
 ```
 
-Si prefieres PostgreSQL local, cambia `DATABASE_URL` a:
+Si prefieres SQLite local para pruebas rapidas, cambia `DATABASE_URL` a:
 
 ```bash
-postgresql+psycopg2://meddiag:meddiag@localhost:5432/meddiag
+sqlite:///./meddiag.local.db
 ```
 
-y levanta la base con:
+y en ese caso no necesitas levantar contenedor de BD. Para el perfil recomendado (PostgreSQL), levanta la base con:
 
 ```bash
 docker compose up -d db
