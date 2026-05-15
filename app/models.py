@@ -20,7 +20,7 @@ from app.utils.database import Base
 
 
 # ---------------------------------------------------------------------------
-# Identity & Access
+# Identidad y acceso
 # ---------------------------------------------------------------------------
 
 class User(Base):
@@ -28,15 +28,15 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # --- legacy fields (kept for backward-compat) ---
+    # --- campos heredados (conservados por compatibilidad hacia atrás) ---
     name = Column(Text, nullable=True)
     phone_number = Column(Text)
     gender = Column(String(1), CheckConstraint("gender IN ('M','F','O')"))
     email = Column(Text, unique=True)
 
-    # --- new auth fields ---
+    # --- campos nuevos de autenticación ---
     auth_provider = Column(String(50), nullable=True)   # "local", "supabase", "firebase"
-    auth_subject = Column(String(255), nullable=True)    # UID from external provider
+    auth_subject = Column(String(255), nullable=True)    # UID del proveedor externo
     display_name = Column(Text, nullable=True)
     email_verified = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
@@ -102,8 +102,8 @@ class AudioRecord(Base):
 
     language_code = Column(String(10), nullable=True)
     status = Column(String(50), nullable=False, default="uploaded")
-    # status values: uploaded, processing, quality_checked, rejected, 
-    #               partial_features, processed/transcribed, failed, archived
+    # Valores de status: uploaded, processing, quality_checked, rejected,
+    #                    partial_features, processed/transcribed, failed, archived
 
     transcript_text = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
@@ -134,12 +134,12 @@ class AudioRecord(Base):
 
 
 # ---------------------------------------------------------------------------
-# Quality Control
+# Control de calidad
 # ---------------------------------------------------------------------------
 
 
 class AudioQualityReport(Base):
-    """Per-audio quality-control report used as a gate before biomarker extraction."""
+    """Reporte de calidad por audio usado como compuerta antes de biomarcadores."""
 
     __tablename__ = "audio_quality_reports"
 
@@ -150,22 +150,22 @@ class AudioQualityReport(Base):
         nullable=False,
     )
 
-    # Overall verdict
+    # Veredicto general.
     is_valid = Column(Boolean, nullable=False, default=True)
     quality_score = Column(Float, nullable=True)  # 0.0 … 1.0
     rejection_reason = Column(Text, nullable=True)
 
-    # Signal-level metrics
+    # Métricas de señal.
     duration_seconds = Column(Float, nullable=True)
     rms_energy = Column(Float, nullable=True)
     peak_amplitude = Column(Float, nullable=True)
     clipping_detected = Column(Boolean, nullable=False, default=False)
-    clipping_ratio = Column(Float, nullable=True)  # fraction of clipped frames
-    snr_db = Column(Float, nullable=True)  # estimated signal-to-noise ratio
-    silence_ratio = Column(Float, nullable=True)  # fraction near-zero frames
+    clipping_ratio = Column(Float, nullable=True)  # Fracción de tramas recortadas.
+    snr_db = Column(Float, nullable=True)  # Relación señal/ruido estimada.
+    silence_ratio = Column(Float, nullable=True)  # Fracción de tramas casi en cero.
 
-    noise_floor_db = Column(Float, nullable=True)  # estimated noise floor
-    bandwidth_hz = Column(Float, nullable=True)  # approximate occupied bandwidth
+    noise_floor_db = Column(Float, nullable=True)  # Piso de ruido estimado.
+    bandwidth_hz = Column(Float, nullable=True)  # Ancho de banda ocupado aproximado.
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -199,7 +199,7 @@ class BiomarkerFeature(Base):
 
 
 # ---------------------------------------------------------------------------
-# Clinical (unchanged)
+# Clínico (sin cambios funcionales)
 # ---------------------------------------------------------------------------
 
 class Symptom(Base):

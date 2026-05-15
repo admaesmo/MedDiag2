@@ -1,10 +1,10 @@
-"""Deterministic nonlinear voice feature extraction.
-Implementa solucuionaes praxticas para:
-- DFA (Detrended Fluctuation Analysis)
-- D2 (Correlation Dimension via Grassberger-Procaccia style estimator)
-- PPE (Pitch Period Entropy)
-- RPDE (Recurrence Period Density Entropy approximation)
-- spread1/spread2 (distributional descriptors over log-pitch)
+"""Extracción determinística de biomarcadores no lineales de voz.
+Implementa aproximaciones prácticas para:
+- DFA (análisis de fluctuaciones sin tendencia)
+- D2 (dimensión de correlación con estimador tipo Grassberger-Procaccia)
+- PPE (entropía de periodo de pitch)
+- RPDE (entropía de densidad de periodos recurrentes)
+- spread1/spread2 (descriptores distribucionales sobre log-pitch)
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import numpy as np
 
 
 class NonlinearFeatureError(Exception):
-    """Raised when nonlinear features cannot be computed."""
+    """Se lanza cuando los biomarcadores no lineales no pueden calcularse."""
 
 
 def _safe_log_space(min_n: int, max_n: int, count: int) -> np.ndarray:
@@ -27,7 +27,7 @@ def compute_dfa(signal: np.ndarray) -> float:
     x = np.asarray(signal, dtype=np.float64)
     x = x[np.isfinite(x)]
     if x.size < 128:
-        raise NonlinearFeatureError("Not enough samples for DFA")
+        raise NonlinearFeatureError("No hay suficientes muestras para DFA")
 
     x = x - np.mean(x)
     y = np.cumsum(x)
@@ -60,7 +60,7 @@ def compute_dfa(signal: np.ndarray) -> float:
             valid_windows.append(w)
 
     if len(flucts) < 4:
-        raise NonlinearFeatureError("Insufficient window scales for DFA")
+        raise NonlinearFeatureError("Escalas de ventana insuficientes para DFA")
 
     slope, _ = np.polyfit(np.log(valid_windows), np.log(flucts), 1)
     return float(slope)
@@ -81,14 +81,14 @@ def compute_d2(signal: np.ndarray, m: int = 3, tau: int = 2) -> float:
     x = np.asarray(signal, dtype=np.float64)
     x = x[np.isfinite(x)]
     if x.size < 400:
-        raise NonlinearFeatureError("Not enough samples for D2")
+        raise NonlinearFeatureError("No hay suficientes muestras para D2")
 
     z = (x - np.mean(x)) / (np.std(x) + 1e-12)
     emb = _embed(z, m=m, tau=tau)
     if emb.shape[0] < 120:
-        raise NonlinearFeatureError("Insufficient embedded points for D2")
+        raise NonlinearFeatureError("Puntos embebidos insuficientes para D2")
 
-    # Subsample for manageable O(n^2) computation.
+    # Submuestrea para mantener manejable el cálculo O(n^2).
     max_points = 350
     if emb.shape[0] > max_points:
         idx = np.linspace(0, emb.shape[0] - 1, max_points).astype(int)
@@ -101,12 +101,12 @@ def compute_d2(signal: np.ndarray, m: int = 3, tau: int = 2) -> float:
     d = dist[iu]
     d = d[np.isfinite(d) & (d > 0)]
     if d.size < 200:
-        raise NonlinearFeatureError("Insufficient distance pairs for D2")
+        raise NonlinearFeatureError("Pares de distancia insuficientes para D2")
 
     r_min = np.percentile(d, 5)
     r_max = np.percentile(d, 35)
     if not np.isfinite(r_min) or not np.isfinite(r_max) or r_max <= r_min:
-        raise NonlinearFeatureError("Invalid radius range for D2")
+        raise NonlinearFeatureError("Rango de radio inválido para D2")
 
     radii = np.logspace(np.log10(r_min), np.log10(r_max), num=14)
     c_vals = []
@@ -119,7 +119,7 @@ def compute_d2(signal: np.ndarray, m: int = 3, tau: int = 2) -> float:
             r_vals.append(r)
 
     if len(c_vals) < 5:
-        raise NonlinearFeatureError("Insufficient correlation sum samples for D2")
+        raise NonlinearFeatureError("Muestras insuficientes de suma de correlación para D2")
 
     slope, _ = np.polyfit(np.log(r_vals), np.log(c_vals), 1)
     return float(slope)
@@ -129,7 +129,7 @@ def compute_ppe(f0: np.ndarray) -> float:
     pitch = np.asarray(f0, dtype=np.float64)
     pitch = pitch[np.isfinite(pitch) & (pitch > 0)]
     if pitch.size < 20:
-        raise NonlinearFeatureError("Not enough voiced pitch points for PPE")
+        raise NonlinearFeatureError("No hay suficientes puntos de pitch sonoro para PPE")
 
     log_pitch = np.log(pitch)
     centered = log_pitch - np.mean(log_pitch)
@@ -141,22 +141,23 @@ def compute_ppe(f0: np.ndarray) -> float:
     entropy = -np.sum(p * np.log(p))
     max_entropy = np.log(30)
     if max_entropy <= 0:
-        raise NonlinearFeatureError("Invalid entropy normalization")
+        raise NonlinearFeatureError("Normalización de entropía inválida")
 
     return float(entropy / max_entropy)
 
 
 def compute_rpde(f0: np.ndarray, max_lag: int = 120) -> float:
     """
-    Approximate RPDE from pitch period recurrence lags.
+    Aproxima RPDE desde los rezagos de recurrencia del periodo de pitch.
 
-    Uses first-return lag distribution over normalized period sequence.
-    Output is normalized entropy in [0, 1] when possible.
+    Usa la distribución de rezagos de primer retorno sobre la secuencia
+    normalizada de periodos. La salida es entropía normalizada en [0, 1]
+    cuando es posible.
     """
     pitch = np.asarray(f0, dtype=np.float64)
     pitch = pitch[np.isfinite(pitch) & (pitch > 0)]
     if pitch.size < 30:
-        raise NonlinearFeatureError("Not enough voiced pitch points for RPDE")
+        raise NonlinearFeatureError("No hay suficientes puntos de pitch sonoro para RPDE")
 
     periods = 1.0 / pitch
     periods = (periods - np.mean(periods)) / (np.std(periods) + 1e-12)
@@ -177,7 +178,7 @@ def compute_rpde(f0: np.ndarray, max_lag: int = 120) -> float:
             continue
 
     if len(lags) < 15:
-        raise NonlinearFeatureError("Insufficient recurrence lags for RPDE")
+        raise NonlinearFeatureError("Rezagos de recurrencia insuficientes para RPDE")
 
     hist, _ = np.histogram(lags, bins=np.arange(1, max_lag + 2), density=False)
     p = hist.astype(np.float64)
@@ -187,22 +188,25 @@ def compute_rpde(f0: np.ndarray, max_lag: int = 120) -> float:
     entropy = -np.sum(p * np.log(p))
     max_entropy = np.log(max_lag)
     if max_entropy <= 0:
-        raise NonlinearFeatureError("Invalid RPDE normalization")
+        raise NonlinearFeatureError("Normalización RPDE inválida")
 
     return float(entropy / max_entropy)
 
 
 def compute_spread_features(f0: np.ndarray) -> Dict[str, float]:
     """
-    Approximate spread1/spread2 from log-pitch distribution.
+    Aproxima spread1/spread2 desde la distribución de log-pitch.
 
-    spread1: lower-tail displacement from median (typically negative).
-    spread2: robust dispersion over centered log-pitch (positive).
+    spread1: desplazamiento de la cola inferior respecto a la mediana
+    (típicamente negativo).
+    spread2: dispersión robusta sobre log-pitch centrado (positiva).
     """
     pitch = np.asarray(f0, dtype=np.float64)
     pitch = pitch[np.isfinite(pitch) & (pitch > 0)]
     if pitch.size < 20:
-        raise NonlinearFeatureError("Not enough voiced pitch points for spread features")
+        raise NonlinearFeatureError(
+            "No hay suficientes puntos de pitch sonoro para las características spread"
+        )
 
     lp = np.log(pitch)
     centered = lp - np.median(lp)
@@ -217,7 +221,7 @@ def compute_spread_features(f0: np.ndarray) -> Dict[str, float]:
 
 
 def compute_nonlinear_features(y: np.ndarray, f0: np.ndarray) -> Dict[str, float]:
-    """Return deterministic nonlinear feature subset for current iteration."""
+    """Devuelve el subconjunto determinístico de biomarcadores no lineales."""
 
     features: Dict[str, float] = {}
 

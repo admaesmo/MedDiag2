@@ -1,9 +1,9 @@
 """
-Authentication service — resolves a Bearer token to a local User.
+Servicio de autenticación: resuelve un token Bearer a un usuario local.
 
-Supports two providers controlled by AUTH_PROVIDER env var:
-  • local  – signs & verifies JWTs with JWT_SECRET_KEY  (dev / testing)
-  • supabase – verifies JWTs signed by Supabase using SUPABASE_JWT_SECRET
+Soporta dos proveedores controlados por la variable de entorno AUTH_PROVIDER:
+  • local: firma y verifica JWT con JWT_SECRET_KEY (desarrollo / pruebas)
+  • supabase: verifica JWT firmados por Supabase usando SUPABASE_JWT_SECRET
 """
 
 import os
@@ -21,7 +21,7 @@ from app.models import Role, User, UserRole
 from app.utils.database import SessionLocal
 
 # ---------------------------------------------------------------------------
-# Config
+# Configuración
 # ---------------------------------------------------------------------------
 
 AUTH_PROVIDER = os.getenv("AUTH_PROVIDER", "local")
@@ -42,7 +42,7 @@ security = HTTPBearer()
 _JWKS_CACHE: dict[str, object] = {"fetched_at": 0.0, "jwks": None}
 
 # ---------------------------------------------------------------------------
-# Token helpers
+# Utilidades de token
 # ---------------------------------------------------------------------------
 
 
@@ -52,7 +52,7 @@ def create_dev_token(
     roles: List[str],
     display_name: Optional[str] = None,
 ) -> str:
-    """Create a JWT for local dev/testing."""
+    """Crea un JWT para desarrollo/pruebas locales."""
     payload = {
         "sub": sub,
         "email": email,
@@ -64,7 +64,7 @@ def create_dev_token(
 
 
 def _decode_token(token: str) -> dict:
-    """Decode and verify a JWT using the configured provider's secret."""
+    """Decodifica y verifica un JWT usando el proveedor configurado."""
     try:
         if AUTH_PROVIDER == "supabase":
             header = jwt.get_unverified_header(token)
@@ -74,7 +74,7 @@ def _decode_token(token: str) -> dict:
                 if not SUPABASE_JWKS_URL or not SUPABASE_ISSUER:
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="SUPABASE_URL is required to verify Supabase signing keys.",
+                        detail="SUPABASE_URL es requerido para verificar las claves de firma de Supabase.",
                     )
 
                 jwks = _load_supabase_jwks()
@@ -91,7 +91,7 @@ def _decode_token(token: str) -> dict:
                 if not secret:
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="SUPABASE_JWT_SECRET not configured for legacy Supabase JWT validation.",
+                        detail="SUPABASE_JWT_SECRET no está configurado para la validación JWT heredada de Supabase.",
                     )
                 payload = jwt.decode(token, secret, algorithms=[alg or JWT_ALGORITHM])
         else:
@@ -100,7 +100,7 @@ def _decode_token(token: str) -> dict:
     except JWTError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid or expired token: {exc}",
+            detail=f"Token inválido o expirado: {exc}",
         )
 
     return payload
@@ -121,13 +121,13 @@ def _load_supabase_jwks() -> dict:
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to load Supabase JWKS: {exc}",
+            detail=f"No se pudo cargar JWKS de Supabase: {exc}",
         )
 
     if not isinstance(jwks, dict) or "keys" not in jwks:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Invalid JWKS document received from Supabase.",
+            detail="Se recibió un documento JWKS inválido desde Supabase.",
         )
 
     _JWKS_CACHE["jwks"] = jwks
@@ -151,7 +151,7 @@ def _select_jwks_key(jwks: dict, header: dict) -> object:
     if not selected_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No matching Supabase signing key found for this token.",
+            detail="No se encontró una clave de firma de Supabase compatible con este token.",
         )
 
     try:
@@ -162,17 +162,17 @@ def _select_jwks_key(jwks: dict, header: dict) -> object:
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Failed to construct verification key: {exc}",
+            detail=f"No se pudo construir la clave de verificación: {exc}",
         )
 
 
 # ---------------------------------------------------------------------------
-# User resolution
+# Resolución de usuario
 # ---------------------------------------------------------------------------
 
 
 def _get_or_create_user_from_token(db: Session, payload: dict) -> User:
-    """Find or create the local user that matches the token payload."""
+    """Busca o crea el usuario local que corresponde al contenido del token."""
     sub = payload.get("sub")
     email = payload.get("email")
     display_name = payload.get("display_name") or email
@@ -181,10 +181,10 @@ def _get_or_create_user_from_token(db: Session, payload: dict) -> User:
     if not sub:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token missing 'sub' claim.",
+            detail="El token no incluye la declaración 'sub'.",
         )
 
-    # Look up by (auth_provider, auth_subject)
+    # Busca por (auth_provider, auth_subject).
     user = (
         db.query(User)
         .filter(User.auth_provider == provider, User.auth_subject == sub)
@@ -192,7 +192,7 @@ def _get_or_create_user_from_token(db: Session, payload: dict) -> User:
     )
 
     if not user and email:
-        # Legacy rows may already exist with this email but without auth_subject.
+        # Pueden existir filas heredadas con este correo pero sin auth_subject.
         user = db.query(User).filter(User.email == email).first()
         if user:
             user.auth_provider = provider
@@ -214,7 +214,7 @@ def _get_or_create_user_from_token(db: Session, payload: dict) -> User:
         db.add(user)
         db.flush()
 
-    # Assign default role from token (or "patient") only if missing.
+    # Asigna el rol predeterminado desde el token (o "patient") solo si falta.
     token_roles = payload.get("roles", ["patient"])
     existing_role_ids = {
         ur.role_id
@@ -231,7 +231,7 @@ def _get_or_create_user_from_token(db: Session, payload: dict) -> User:
 
 
 # ---------------------------------------------------------------------------
-# FastAPI dependencies
+# Dependencias de FastAPI
 # ---------------------------------------------------------------------------
 
 
@@ -247,13 +247,13 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
-    """Dependency: extracts the Bearer token, decodes it, returns a User."""
+    """Dependencia: extrae el token Bearer, lo decodifica y devuelve un usuario."""
     payload = _decode_token(credentials.credentials)
     return _get_or_create_user_from_token(db, payload)
 
 
 def _get_user_role_codes(db: Session, user: User) -> List[str]:
-    """Return the list of role codes assigned to a user."""
+    """Devuelve la lista de códigos de rol asignados a un usuario."""
     return [
         ur.role.code
         for ur in db.query(UserRole).filter(UserRole.user_id == user.id).all()
@@ -261,7 +261,7 @@ def _get_user_role_codes(db: Session, user: User) -> List[str]:
 
 
 def require_role(role_code: str):
-    """Dependency factory: current user must have a specific role."""
+    """Factory de dependencia: el usuario actual debe tener un rol específico."""
 
     def _check(
         user: User = Depends(get_current_user),
@@ -271,7 +271,7 @@ def require_role(role_code: str):
         if role_code not in codes:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Role '{role_code}' required.",
+                detail=f"Se requiere el rol '{role_code}'.",
             )
         return user
 
@@ -279,7 +279,7 @@ def require_role(role_code: str):
 
 
 def require_any_role(role_codes: List[str]):
-    """Dependency factory: current user must have at least one of the roles."""
+    """Factory de dependencia: el usuario actual debe tener al menos uno de los roles."""
 
     def _check(
         user: User = Depends(get_current_user),
@@ -289,7 +289,7 @@ def require_any_role(role_codes: List[str]):
         if not set(role_codes) & set(codes):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"One of roles {role_codes} required.",
+                detail=f"Se requiere uno de estos roles: {role_codes}.",
             )
         return user
 

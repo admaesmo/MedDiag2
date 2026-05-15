@@ -1,16 +1,17 @@
 """
-Quality Control Service — audio signal validation gate.
+Servicio de Control de Calidad — compuerta de validación de señal de audio.
 
-Analyses raw audio for:
-  - Duration validity
-  - Clipping (peak saturation)
-  - RMS energy
-  - Signal-to-noise ratio (SNR)
-  - Silence ratio
-  - Noise floor
-  - Occupied bandwidth
+Analiza el audio crudo para detectar:
+  - Duración válida
+  - Recorte (saturación de pico)
+  - Energía RMS
+  - Relación señal/ruido (SNR)
+  - Proporción de silencio
+  - Piso de ruido
+  - Ancho de banda ocupado
 
-Produces an AudioQualityReport that must pass before biomarker extraction.
+Genera un AudioQualityReport que debe ser aprobado antes de la extracción
+de biomarcadores.
 """
 
 from __future__ import annotations
@@ -30,231 +31,237 @@ from app.schemas.quality_control import QualityControlResult
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Tunable thresholds  (could be promoted to settings / env vars)
+# Umbrales configurables  (podrían promoverse a settings / vars de entorno)
 # ---------------------------------------------------------------------------
 
-MIN_DURATION_S = 0.8          # seconds
-MAX_CLIPPING_RATIO = 0.01     # 1 % of samples clipped → reject
-MIN_RMS = 0.005               # below this → too quiet / mostly silence
-MAX_SILENCE_RATIO = 0.60      # 60 % near-zero → reject
-MIN_SNR_DB = 10.0             # below 10 dB → too noisy
-CLIP_THRESHOLD = 0.98         # |sample| >= threshold → clipping candidate
+DURACION_MINIMA_S = 0.8          # segundos
+MAX_RAZON_RECORTE = 0.01         # 1 % de muestras recortadas → rechazar
+RMS_MINIMO = 0.005               # por debajo → demasiado silencio / baja energía
+MAX_RAZON_SILENCIO = 0.60        # 60 % de tramas casi en cero → rechazar
+SNR_MINIMO_DB = 10.0             # menos de 10 dB → demasiado ruidoso
+UMBRAL_RECORTE = 0.98            # |muestra| >= umbral → candidato a recorte
 
 
-def _load_audio_from_record(audio_record: AudioRecord) -> tuple[np.ndarray, int]:
-    """Load and decode a WAV audio file from storage into (samples, sample_rate)."""
+def _cargar_audio_desde_registro(audio_record: AudioRecord) -> tuple[np.ndarray, int]:
+    """Carga y decodifica un archivo WAV desde el almacenamiento en (muestras, tasa_muestreo)."""
     from app.services.storage_service import get_storage_backend
 
     backend = get_storage_backend()
     audio_bytes = backend.load(audio_record.storage_path)
     if not audio_bytes:
-        raise RuntimeError(f"Cannot load audio from {audio_record.storage_path}")
+        raise RuntimeError(f"No se pudo cargar el audio desde {audio_record.storage_path}")
 
     try:
         import librosa
         y, sr = librosa.load(io.BytesIO(audio_bytes), sr=None, mono=True)
         return y, sr
     except Exception:
-        # Fallback: try pydub
+        # Respaldo: intentar con pydub.
         try:
             from pydub import AudioSegment
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                 tmp.write(audio_bytes)
-                tmp_path = tmp.name
-            seg = AudioSegment.from_file(tmp_path)
+                ruta_tmp = tmp.name
+            seg = AudioSegment.from_file(ruta_tmp)
             import os
-            os.remove(tmp_path)
+            os.remove(ruta_tmp)
             seg = seg.set_channels(1)
             y = np.array(seg.get_array_of_samples()).astype(np.float32)
-            scale = float(1 << (8 * seg.sample_width - 1))
-            if scale > 0:
-                y /= scale
+            escala = float(1 << (8 * seg.sample_width - 1))
+            if escala > 0:
+                y /= escala
             return y, seg.frame_rate
         except Exception as exc:
-            raise RuntimeError(f"Cannot decode audio: {exc}")
+            raise RuntimeError(f"No se pudo decodificar el audio: {exc}")
 
 
-def _compute_snr(y: np.ndarray, sr: int, frame_ms: int = 30) -> Optional[float]:
-    """Estimate SNR via voice-activity heuristic (energy percentile split)."""
-    frame_len = int(sr * frame_ms / 1000)
-    if len(y) < frame_len * 2:
+def _calcular_snr(y: np.ndarray, sr: int, marco_ms: int = 30) -> Optional[float]:
+    """Estima la SNR mediante heurística de actividad vocal (división por percentiles de energía)."""
+    len_marco = int(sr * marco_ms / 1000)
+    if len(y) < len_marco * 2:
         return None
 
-    frames = y[: (len(y) // frame_len) * frame_len].reshape(-1, frame_len)
-    rms_per_frame = np.sqrt(np.mean(frames ** 2, axis=1))
+    tramas = y[: (len(y) // len_marco) * len_marco].reshape(-1, len_marco)
+    rms_por_trama = np.sqrt(np.mean(tramas ** 2, axis=1))
 
-    if rms_per_frame.size < 4:
+    if rms_por_trama.size < 4:
         return None
 
-    # Bottom 25 % frames → noise floor estimate
-    noise_frames = rms_per_frame[np.argsort(rms_per_frame)[: max(1, rms_per_frame.size // 4)]]
-    noise_rms = float(np.mean(noise_frames)) + 1e-12
+    # 25 % inferior de tramas → estimación de piso de ruido
+    tramas_ruido = rms_por_trama[np.argsort(rms_por_trama)[: max(1, rms_por_trama.size // 4)]]
+    rms_ruido = float(np.mean(tramas_ruido)) + 1e-12
 
-    # Top 25 % frames → signal
-    signal_frames = rms_per_frame[np.argsort(-rms_per_frame)[: max(1, rms_per_frame.size // 4)]]
-    signal_rms = float(np.mean(signal_frames))
+    # 25 % superior de tramas → señal
+    tramas_senal = rms_por_trama[np.argsort(-rms_por_trama)[: max(1, rms_por_trama.size // 4)]]
+    rms_senal = float(np.mean(tramas_senal))
 
-    ratio = signal_rms / noise_rms
-    if ratio <= 0:
+    relacion = rms_senal / rms_ruido
+    if relacion <= 0:
         return None
-    return 20.0 * np.log10(ratio)
+    return 20.0 * np.log10(relacion)
 
 
-def _compute_bandwidth(y: np.ndarray, sr: int, energy_fraction: float = 0.95) -> float:
-    """Estimate the frequency band containing *energy_fraction* of total energy."""
-    spec = np.abs(np.fft.rfft(y))
-    power = spec ** 2
-    total = np.sum(power)
+def _calcular_ancho_banda(y: np.ndarray, sr: int, fraccion_energia: float = 0.95) -> float:
+    """Estima la banda de frecuencia que contiene *fraccion_energia* de la energía total."""
+    espectro = np.abs(np.fft.rfft(y))
+    potencia = espectro ** 2
+    total = np.sum(potencia)
     if total <= 0:
         return 0.0
 
-    cumsum = np.cumsum(power)
-    cutoff_idx = int(np.searchsorted(cumsum, total * energy_fraction))
-    freqs = np.fft.rfftfreq(len(y), d=1.0 / sr)
-    if cutoff_idx < len(freqs):
-        return float(freqs[cutoff_idx])
-    return float(freqs[-1]) if len(freqs) > 0 else 0.0
+    cumsum = np.cumsum(potencia)
+    indice_corte = int(np.searchsorted(cumsum, total * fraccion_energia))
+    frecuencias = np.fft.rfftfreq(len(y), d=1.0 / sr)
+    if indice_corte < len(frecuencias):
+        return float(frecuencias[indice_corte])
+    return float(frecuencias[-1]) if len(frecuencias) > 0 else 0.0
 
 
-def analyse_audio(audio_record: AudioRecord) -> QualityControlResult:
+def analizar_audio(audio_record: AudioRecord) -> QualityControlResult:
     """
-    Run quality checks on *audio_record* and return a structured result.
+    Ejecuta controles de calidad sobre *audio_record* y devuelve un resultado estructurado.
 
-    Steps performed:
-      1. Load & decode audio
-      2. Measure duration, RMS, peak, clipping
-      3. Estimate SNR
-      4. Measure silence ratio, noise floor, bandwidth
-      5. Combine into a pass/fail verdict with score
+    Pasos realizados:
+      1. Carga y decodificación del audio
+      2. Medición de duración, RMS, pico, recorte
+      3. Estimación de SNR
+      4. Medición de proporción de silencio, piso de ruido, ancho de banda
+      5. Combinación en un veredicto de aprobación/rechazo con puntuación
     """
-    y, sr = _load_audio_from_record(audio_record)
-    duration_s = float(len(y)) / sr
+    y, sr = _cargar_audio_desde_registro(audio_record)
+    duracion_s = float(len(y)) / sr
 
-    # --- Basic metrics ---
+    # --- Métricas básicas ---
     rms = float(np.sqrt(np.mean(y ** 2)))
-    peak = float(np.max(np.abs(y)))
-    clipping_mask = np.abs(y) >= CLIP_THRESHOLD
-    clipping_count = int(np.sum(clipping_mask))
-    clipping_ratio = clipping_count / max(len(y), 1)
+    pico = float(np.max(np.abs(y)))
+    mascara_recorte = np.abs(y) >= UMBRAL_RECORTE
+    conteo_recorte = int(np.sum(mascara_recorte))
+    razon_recorte = conteo_recorte / max(len(y), 1)
 
-    # --- Silence ratio (frames with RMS < 1 % of peak) ---
-    frame_len = int(sr * 0.020)  # 20 ms frames
-    if frame_len < 1:
-        frame_len = max(1, len(y) // 100)
-    frames = y[: (len(y) // frame_len) * frame_len].reshape(-1, frame_len)
-    frame_rms = np.sqrt(np.mean(frames ** 2, axis=1))
-    silence_threshold = 0.01 * (peak + 1e-12)
-    silence_ratio = float(np.mean(frame_rms < silence_threshold))
+    # --- Proporción de silencio (tramas con RMS < 1 % del pico) ---
+    len_marco = int(sr * 0.020)  # tramas de 20 ms
+    if len_marco < 1:
+        len_marco = max(1, len(y) // 100)
+    tramas = y[: (len(y) // len_marco) * len_marco].reshape(-1, len_marco)
+    rms_trama = np.sqrt(np.mean(tramas ** 2, axis=1))
+    umbral_silencio = 0.01 * (pico + 1e-12)
+    razon_silencio = float(np.mean(rms_trama < umbral_silencio))
 
     # --- SNR ---
-    snr_db = _compute_snr(y, sr)
+    snr_db = _calcular_snr(y, sr)
 
-    # --- Noise floor (dB) ---
-    noise_floor_db = float(20.0 * np.log10(np.percentile(np.abs(y), 5) + 1e-12))
+    # --- Piso de ruido (dB) ---
+    piso_ruido_db = float(20.0 * np.log10(np.percentile(np.abs(y), 5) + 1e-12))
 
-    # --- Bandwidth ---
-    bw = _compute_bandwidth(y, sr)
+    # --- Ancho de banda ---
+    bw = _calcular_ancho_banda(y, sr)
 
-    # --- Scoring logic ---
-    score = 1.0
-    reasons: list[str] = []
+    # --- Lógica de puntuación ---
+    puntuacion = 1.0
+    razones: list[str] = []
 
-    # Duration
-    if duration_s < MIN_DURATION_S:
-        reasons.append(f"Duration {duration_s:.2f}s < min {MIN_DURATION_S}s")
+    # Duración
+    if duracion_s < DURACION_MINIMA_S:
+        razones.append(f"Duración {duracion_s:.2f}s < mín {DURACION_MINIMA_S}s")
     else:
-        score *= min(1.0, duration_s / 3.0)  # penalise very short recordings
+        puntuacion *= min(1.0, duracion_s / 3.0)  # penaliza grabaciones muy cortas
 
-    # Clipping
-    if clipping_ratio > MAX_CLIPPING_RATIO:
-        reasons.append(f"Clipping ratio {clipping_ratio:.4f} > max {MAX_CLIPPING_RATIO}")
-        score *= 0.0  # hard reject
-    elif clipping_ratio > 0:
-        score *= (1.0 - clipping_ratio * 5.0)
+    # Recorte
+    if razon_recorte > MAX_RAZON_RECORTE:
+        razones.append(f"Recorte {razon_recorte:.4f} > máx {MAX_RAZON_RECORTE}")
+        puntuacion *= 0.0  # rechazo duro
+    elif razon_recorte > 0:
+        puntuacion *= (1.0 - razon_recorte * 5.0)
 
-    # RMS (too quiet)
-    if rms < MIN_RMS:
-        reasons.append(f"RMS energy {rms:.5f} < min {MIN_RMS}")
-        score *= max(0.0, rms / MIN_RMS)
+    # RMS (demasiado bajo)
+    if rms < RMS_MINIMO:
+        razones.append(f"Energía RMS {rms:.5f} < mín {RMS_MINIMO}")
+        puntuacion *= max(0.0, rms / RMS_MINIMO)
 
-    # Silence ratio
-    if silence_ratio > MAX_SILENCE_RATIO:
-        reasons.append(f"Silence ratio {silence_ratio:.3f} > max {MAX_SILENCE_RATIO}")
-        score *= 0.0  # hard reject
+    # Proporción de silencio
+    if razon_silencio > MAX_RAZON_SILENCIO:
+        razones.append(f"Silencio {razon_silencio:.3f} > máx {MAX_RAZON_SILENCIO}")
+        puntuacion *= 0.0  # rechazo duro
     else:
-        score *= (1.0 - silence_ratio * 0.5)
+        puntuacion *= (1.0 - razon_silencio * 0.5)
 
     # SNR
-    if snr_db is not None and snr_db < MIN_SNR_DB:
-        reasons.append(f"SNR {snr_db:.1f} dB < min {MIN_SNR_DB} dB")
-        score *= max(0.0, snr_db / MIN_SNR_DB)
+    if snr_db is not None and snr_db < SNR_MINIMO_DB:
+        razones.append(f"SNR {snr_db:.1f} dB < mín {SNR_MINIMO_DB} dB")
+        puntuacion *= max(0.0, snr_db / SNR_MINIMO_DB)
 
-    # Clip score to [0, 1]
-    score = max(0.0, min(1.0, score))
+    # Acotar puntuación a [0, 1]
+    puntuacion = max(0.0, min(1.0, puntuacion))
 
-    is_valid = len(reasons) == 0 or score >= 0.3
-    rejection_reason = "; ".join(reasons) if reasons else None
+    es_valido = len(razones) == 0 or puntuacion >= 0.3
+    motivo_rechazo = "; ".join(razones) if razones else None
 
     return QualityControlResult(
-        is_valid=is_valid,
-        quality_score=round(score, 4),
-        rejection_reason=rejection_reason,
-        duration_seconds=duration_s,
+        is_valid=es_valido,
+        quality_score=round(puntuacion, 4),
+        rejection_reason=motivo_rechazo,
+        duration_seconds=duracion_s,
         rms_energy=float(rms),
-        peak_amplitude=float(peak),
-        clipping_detected=clipping_ratio > 0,
-        clipping_ratio=clipping_ratio,
+        peak_amplitude=float(pico),
+        clipping_detected=razon_recorte > 0,
+        clipping_ratio=razon_recorte,
         snr_db=round(snr_db, 2) if snr_db is not None else None,
-        silence_ratio=silence_ratio,
-        noise_floor_db=round(noise_floor_db, 2),
+        silence_ratio=razon_silencio,
+        noise_floor_db=round(piso_ruido_db, 2),
         bandwidth_hz=round(bw, 1),
     )
 
 
-def run_quality_check(db: Session, audio_record_id: int) -> AudioQualityReport:
+def ejecutar_control_calidad(db: Session, audio_record_id: int) -> AudioQualityReport:
     """
-    Full quality-control round-trip: analyse → persist → update status.
+    Ciclo completo de control de calidad: analizar → persistir → actualizar estado.
 
-    Returns the persisted AudioQualityReport row.
+    Devuelve el registro AudioQualityReport persistido.
     """
     record = db.query(AudioRecord).filter(AudioRecord.id == audio_record_id).first()
     if not record:
-        raise ValueError(f"AudioRecord {audio_record_id} not found")
+        raise ValueError(f"AudioRecord {audio_record_id} no encontrado")
 
-    result = analyse_audio(record)
+    resultado = analizar_audio(record)
 
-    report = AudioQualityReport(
+    reporte = AudioQualityReport(
         audio_record_id=audio_record_id,
-        is_valid=result.is_valid,
-        quality_score=result.quality_score,
-        rejection_reason=result.rejection_reason,
-        duration_seconds=result.duration_seconds,
-        rms_energy=result.rms_energy,
-        peak_amplitude=result.peak_amplitude,
-        clipping_detected=result.clipping_detected,
-        clipping_ratio=result.clipping_ratio,
-        snr_db=result.snr_db,
-        silence_ratio=result.silence_ratio,
-        noise_floor_db=result.noise_floor_db,
-        bandwidth_hz=result.bandwidth_hz,
+        is_valid=resultado.is_valid,
+        quality_score=resultado.quality_score,
+        rejection_reason=resultado.rejection_reason,
+        duration_seconds=resultado.duration_seconds,
+        rms_energy=resultado.rms_energy,
+        peak_amplitude=resultado.peak_amplitude,
+        clipping_detected=resultado.clipping_detected,
+        clipping_ratio=resultado.clipping_ratio,
+        snr_db=resultado.snr_db,
+        silence_ratio=resultado.silence_ratio,
+        noise_floor_db=resultado.noise_floor_db,
+        bandwidth_hz=resultado.bandwidth_hz,
     )
-    db.add(report)
+    db.add(reporte)
 
-    # Update audio-record status
-    if result.is_valid:
+    # Actualizar estado del registro de audio
+    if resultado.is_valid:
         record.status = "quality_checked"
     else:
         record.status = "rejected"
     db.commit()
-    db.refresh(report)
-    return report
+    db.refresh(reporte)
+    return reporte
 
 
-def get_latest_quality_report(db: Session, audio_record_id: int) -> Optional[AudioQualityReport]:
-    """Return the most recent QC report for an audio record."""
+def obtener_ultimo_reporte_calidad(db: Session, audio_record_id: int) -> Optional[AudioQualityReport]:
+    """Devuelve el reporte de calidad más reciente para un registro de audio."""
     return (
         db.query(AudioQualityReport)
         .filter(AudioQualityReport.audio_record_id == audio_record_id)
         .order_by(AudioQualityReport.created_at.desc())
         .first()
     )
+
+
+# Alias conservados para imports existentes en API/pipeline.
+analyse_audio = analizar_audio
+run_quality_check = ejecutar_control_calidad
+get_latest_quality_report = obtener_ultimo_reporte_calidad

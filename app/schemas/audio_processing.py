@@ -1,5 +1,5 @@
 """
-Audio processing schemas for API responses.
+Schemas de procesamiento de audio para respuestas de API.
 """
 
 from typing import Dict, List, Optional, Any
@@ -8,15 +8,15 @@ from pydantic import BaseModel
 
 
 class AudioProcessingRequest(BaseModel):
-    """Request schema for audio processing."""
+    """Schema de solicitud para procesamiento de audio."""
     audio_id: int
     process_immediately: bool = True
 
 
 class AudioProcessingResponse(BaseModel):
-    """Response schema for audio processing."""
+    """Schema de respuesta para procesamiento de audio."""
     audio_record_id: int
-    status: str  # success, already_processed, failed
+    status: str  # códigos API: success, already_processed, failed
     features: Optional[Dict[str, float]] = None
     diagnosis_id: Optional[int] = None
     prediction: Optional[str] = None
@@ -26,13 +26,13 @@ class AudioProcessingResponse(BaseModel):
 
 
 class BatchProcessingRequest(BaseModel):
-    """Request schema for batch audio processing."""
+    """Schema de solicitud para procesamiento por lotes."""
     limit: int = 10
     process_all: bool = False
 
 
 class BatchProcessingResult(BaseModel):
-    """Single result in batch processing."""
+    """Resultado individual del procesamiento por lotes."""
     audio_record_id: int
     status: str
     error: Optional[str] = None
@@ -41,7 +41,7 @@ class BatchProcessingResult(BaseModel):
 
 
 class BatchProcessingResponse(BaseModel):
-    """Response schema for batch audio processing."""
+    """Schema de respuesta para procesamiento por lotes."""
     results: List[BatchProcessingResult]
     total_processed: int
     successful: int
@@ -49,7 +49,7 @@ class BatchProcessingResponse(BaseModel):
 
 
 class AudioAnalysisSummary(BaseModel):
-    """Summary of audio analysis for a user."""
+    """Resumen de análisis de audio de un usuario."""
     total_audio_records: int
     status_counts: Dict[str, int]
     recent_diagnoses: List[Dict[str, Any]]
@@ -57,20 +57,20 @@ class AudioAnalysisSummary(BaseModel):
 
 
 class AudioFeatureExtraction(BaseModel):
-    """Extracted audio features for Parkinson's detection."""
-    # Fundamental frequency features
+    """Biomarcadores de audio extraídos para Parkinson."""
+    # Frecuencia fundamental.
     mdvp_fo_hz: Optional[float] = None  # MDVP:Fo(Hz)
     mdvp_fhi_hz: Optional[float] = None  # MDVP:Fhi(Hz)
     mdvp_flo_hz: Optional[float] = None  # MDVP:Flo(Hz)
     
-    # Jitter features
+    # Biomarcadores de jitter.
     mdvp_jitter_percent: Optional[float] = None  # MDVP:Jitter(%)
     mdvp_jitter_abs: Optional[float] = None  # MDVP:Jitter(Abs)
     mdvp_rap: Optional[float] = None  # MDVP:RAP
     mdvp_ppq: Optional[float] = None  # MDVP:PPQ
     jitter_ddp: Optional[float] = None  # Jitter:DDP
     
-    # Shimmer features
+    # Biomarcadores de shimmer.
     mdvp_shimmer: Optional[float] = None  # MDVP:Shimmer
     mdvp_shimmer_db: Optional[float] = None  # MDVP:Shimmer(dB)
     shimmer_apq3: Optional[float] = None  # Shimmer:APQ3
@@ -78,11 +78,11 @@ class AudioFeatureExtraction(BaseModel):
     mdvp_apq: Optional[float] = None  # MDVP:APQ
     shimmer_dda: Optional[float] = None  # Shimmer:DDA
     
-    # Noise features
+    # Biomarcadores de ruido.
     nhr: Optional[float] = None  # NHR
     hnr: Optional[float] = None  # HNR
     
-    # Nonlinear dynamics features
+    # Biomarcadores de dinámica no lineal.
     rpde: Optional[float] = None  # RPDE
     dfa: Optional[float] = None  # DFA
     spread1: Optional[float] = None  # spread1
@@ -98,11 +98,11 @@ class AudioFeatureExtraction(BaseModel):
 
 
 class AudioProcessingStatus(BaseModel):
-    """Status of audio processing."""
+    """Estado del procesamiento de audio."""
     audio_id: int
-    status: str  # uploaded, processing, processed, failed
+    status: str  # códigos API: uploaded, processing, processed, failed
     progress_percentage: Optional[int] = None
-    estimated_time_remaining: Optional[int] = None  # seconds
+    estimated_time_remaining: Optional[int] = None  # segundos
     features_extracted: Optional[bool] = None
     prediction_completed: Optional[bool] = None
     created_at: datetime

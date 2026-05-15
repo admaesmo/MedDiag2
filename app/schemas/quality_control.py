@@ -1,5 +1,5 @@
 """
-QC schemas for audio quality-control reports.
+Schemas de QA/QC para reportes de control de calidad de audio.
 """
 
 from typing import Optional
@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 
 class QualityControlReportOut(BaseModel):
-    """Public shape of an AudioQualityReport."""
+    """Forma pública de un AudioQualityReport."""
     id: int
     audio_record_id: int
     is_valid: bool
@@ -32,7 +32,7 @@ class QualityControlReportOut(BaseModel):
 
 
 class QualityControlResult(BaseModel):
-    """Result returned by the QC service after analysing an audio chunk."""
+    """Resultado devuelto por QA/QC después de analizar un audio."""
     is_valid: bool
     quality_score: float
     rejection_reason: Optional[str] = None

@@ -1,9 +1,10 @@
 """
-Audio pipeline service - orchestrates the complete audio processing workflow:
-1. Upload audio file
-2. Extract acoustic features
-3. Run Parkinson's prediction
-4. Store results
+Servicio de pipeline de audio: coordina el flujo completo de procesamiento:
+1. Cargar archivo de audio
+2. Ejecutar control de calidad
+3. Extraer biomarcadores acústicos
+4. Ejecutar predicción de Parkinson
+5. Almacenar resultados
 """
 
 import json
@@ -28,19 +29,19 @@ FEATURE_SCHEMA_VERSION = "parkinson-oxford-22-v1"
 
 
 class AudioPipelineError(Exception):
-    """Custom exception for audio pipeline errors."""
+    """Excepción personalizada para errores del pipeline de audio."""
     pass
 
 
 def validate_features_for_prediction(features: Dict[str, float]) -> Tuple[bool, List[str]]:
     """
-    Validate that all required Parkinson features are present and have valid values.
+    Valida que todos los biomarcadores requeridos por Parkinson existan y sean válidos.
     
-    Args:
-        features: Dictionary of extracted acoustic features
+    Argumentos:
+        features: Diccionario de biomarcadores acústicos extraídos
         
-    Returns:
-        Tuple of (is_valid, missing_features)
+    Retorna:
+        Tupla (es_valido, biomarcadores_faltantes)
     """
     missing_features = []
     
@@ -51,7 +52,7 @@ def validate_features_for_prediction(features: Dict[str, float]) -> Tuple[bool, 
             
         value = features[feature]
         if not isinstance(value, (int, float)) or not float('-inf') < value < float('inf'):
-            # NaN or infinite values are invalid
+            # Los valores NaN o infinitos no son válidos.
             missing_features.append(feature)
     
     return len(missing_features) == 0, missing_features
@@ -63,17 +64,16 @@ def store_processing_result(
     diagnosis_id: int,
 ) -> None:
     """
-    Mark audio as processed and link diagnosis ID in notes.
+    Marca el audio como procesado y vincula el diagnóstico en notes.
 
-    Features are persisted exclusively in ``BiomarkerFeature``.
-    The ``notes`` field stores only the diagnosis reference
-    and any pre-existing metadata.
+    Los biomarcadores se persisten exclusivamente en ``BiomarkerFeature``.
+    El campo ``notes`` conserva la referencia al diagnóstico y metadatos previos.
     """
     audio_record = db.query(AudioRecord).filter(AudioRecord.id == audio_record_id).first()
     if not audio_record:
-        raise AudioPipelineError(f"Audio record {audio_record_id} not found")
+        raise AudioPipelineError(f"Registro de audio {audio_record_id} no encontrado")
 
-    # Preserve existing context, e.g. original `notes` from upload
+    # Conservar contexto existente, por ejemplo las notas originales de carga.
     notes_payload: dict = {}
     if audio_record.notes:
         try:
@@ -160,40 +160,40 @@ def create_parkinson_diagnosis(
     audio_record_id: Optional[int] = None
 ) -> Diagnosis:
     """
-    Create a Parkinson diagnosis based on extracted audio features.
+    Crea un diagnóstico preliminar de Parkinson basado en biomarcadores de audio.
     
-    Args:
-        db: Database session
-        user_id: User ID
-        features: Dictionary of extracted acoustic features
-        audio_record_id: Optional audio record ID that this diagnosis is based on
+    Argumentos:
+        db: Sesión de base de datos
+        user_id: ID del usuario
+        features: Diccionario de biomarcadores acústicos extraídos
+        audio_record_id: ID opcional del audio en el que se basa el diagnóstico
         
-    Returns:
-        The created Diagnosis object
+    Retorna:
+        Objeto Diagnosis creado
     """
-    # Run prediction
+    # Ejecutar predicción.
     try:
         prediction_label, probability = predict_parkinson(features)
     except Exception as e:
-        logger.error(f"Failed to run Parkinson prediction: {str(e)}", exc_info=True)
-        raise AudioPipelineError(f"Prediction failed: {str(e)}")
+        logger.error(f"No se pudo ejecutar la predicción de Parkinson: {str(e)}", exc_info=True)
+        raise AudioPipelineError(f"Falló la predicción: {str(e)}")
     
-    # Create diagnosis record
+    # Crear registro de diagnóstico.
     diagnosis = Diagnosis(
         user_id=user_id,
         generated_at=datetime.now(timezone.utc),
         status="pending",
-        final_description="Parkinson's diagnosis based on voice analysis."
+        final_description="Diagnóstico preliminar de Parkinson basado en análisis de voz."
     )
     db.add(diagnosis)
     db.flush()
     
-    # Get Parkinson disease record
+    # Obtener registro de la enfermedad Parkinson.
     parkinson_disease = db.query(Disease).filter(Disease.disease_code == "PARK").first()
     if not parkinson_disease:
-        raise AudioPipelineError("Parkinson disease record not found in database")
+        raise AudioPipelineError("No se encontró el registro de Parkinson en la base de datos")
     
-    # Create diagnosis detail
+    # Crear detalle del diagnóstico.
     diagnosis_detail = DiagnosisDetail(
         diagnosis_id=diagnosis.id,
         disease_id=parkinson_disease.id,
@@ -201,18 +201,18 @@ def create_parkinson_diagnosis(
     )
     db.add(diagnosis_detail)
     
-    # Update diagnosis with appropriate message
+    # Actualizar diagnóstico con mensaje apropiado.
     if prediction_label == 1:
-        diagnosis.final_description = f"Possible Parkinson's detected with {probability:.1%} confidence. Please consult a neurologist."
+        diagnosis.final_description = f"Posibles indicadores de Parkinson detectados con {probability:.1%} de confianza. Consulte a un neurólogo."
     else:
-        diagnosis.final_description = f"No significant Parkinson's indicators detected ({probability:.1%} confidence)."
+        diagnosis.final_description = f"No se detectaron indicadores significativos de Parkinson ({probability:.1%} de confianza)."
     
-    # Link audio record if provided
+    # Vincular audio si fue proporcionado.
     if audio_record_id:
-        # Could store this relationship in notes or a separate field
+        # Esta relación puede almacenarse en notes o en un campo dedicado futuro.
         if not diagnosis.final_description:
             diagnosis.final_description = ""
-        diagnosis.final_description += f" Based on audio recording #{audio_record_id}."
+        diagnosis.final_description += f" Basado en la grabación de audio #{audio_record_id}."
     
     db.commit()
     return diagnosis
@@ -224,30 +224,30 @@ def process_audio_pipeline(
     user_id: Optional[int] = None
 ) -> Dict:
     """
-    Main audio pipeline function: process audio and create diagnosis.
+    Función principal del pipeline: procesa audio y crea diagnóstico preliminar.
     
-    Args:
-        db: Database session
-        audio_record_id: ID of the audio record to process
-        user_id: Optional user ID (will be fetched from audio record if not provided)
+    Argumentos:
+        db: Sesión de base de datos
+        audio_record_id: ID del registro de audio a procesar
+        user_id: ID opcional del usuario; se toma del audio si no se entrega
         
-    Returns:
-        Dictionary with processing results
+    Retorna:
+        Diccionario con resultados del procesamiento
     """
-    # Get audio record
+    # Obtener registro de audio.
     audio_record = db.query(AudioRecord).filter(AudioRecord.id == audio_record_id).first()
     if not audio_record:
-        raise AudioPipelineError(f"Audio record {audio_record_id} not found")
+        raise AudioPipelineError(f"Registro de audio {audio_record_id} no encontrado")
     
-    # Get user_id from audio record if not provided
+    # Obtener user_id desde el audio si no fue proporcionado.
     if user_id is None:
         user_id = audio_record.user_id
     
-    # Check if already processed
+    # Verificar si ya fue procesado.
     if audio_record.status in {"processed", "transcribed"}:
-        logger.info(f"Audio record {audio_record_id} already processed")
+        logger.info(f"El registro de audio {audio_record_id} ya fue procesado")
         features = load_feature_set_payload(get_latest_feature_set(db, audio_record_id))
-        # Backward compat: legacy records may have features embedded in notes
+        # Compatibilidad: registros antiguos pueden tener biomarcadores en notes.
         if not features and audio_record.notes:
             try:
                 notes_data = json.loads(audio_record.notes)
@@ -261,50 +261,50 @@ def process_audio_pipeline(
                 "audio_record_id": audio_record_id,
                 "status": "already_processed",
                 "features": features,
-                "message": "Audio was previously processed"
+                "message": "El audio ya había sido procesado"
             }
         else:
-            # Reprocess if features not found
-            logger.info(f"Audio record {audio_record_id} marked as processed but features not found, reprocessing")
+            # Reprocesar si no se encontraron biomarcadores.
+            logger.info(f"El audio {audio_record_id} figura como procesado, pero no tiene biomarcadores; se reprocesará")
     
     try:
-        # Update status to processing
+        # Actualizar estado a procesamiento.
         audio_record.status = "processing"
         audio_record.updated_at = datetime.now(timezone.utc)
         db.commit()
 
-        # --- QUALITY CONTROL GATE ---
-        # Run QC before biomarker extraction; if the audio fails quality
-        # checks it is flagged as rejected and no features are computed.
+        # --- COMPUERTA DE CONTROL DE CALIDAD ---
+        # Ejecutar QA/QC antes de extraer biomarcadores; si falla, el audio
+        # queda marcado como rechazado y no se calculan features.
         from app.services.quality_control import run_quality_check
 
         qc_report = run_quality_check(db, audio_record_id)
         if not qc_report.is_valid:
-            reason = qc_report.rejection_reason or "Audio did not pass quality control"
-            logger.warning(f"QC rejected audio record {audio_record_id}: {reason}")
+            reason = qc_report.rejection_reason or "El audio no superó el control de calidad"
+            logger.warning(f"QA/QC rechazó el registro de audio {audio_record_id}: {reason}")
             raise AudioPipelineError(
-                f"Quality control rejected: {reason}"
+                f"Control de calidad rechazado: {reason}"
             )
 
-        # Extract features using audio_processing service
+        # Extraer biomarcadores usando el servicio de procesamiento de audio.
         features = process_audio_file(audio_record_id, db)
         if not features:
-            # Fallback: try direct extraction
-            logger.info(f"process_audio_file returned None, trying direct extraction")
+            # Fallback: intentar extracción directa.
+            logger.info("process_audio_file retornó None; se intentará extracción directa")
             backend = get_storage_backend()
             audio_bytes = backend.load(audio_record.storage_path)
             if not audio_bytes:
-                raise AudioProcessingError(f"Could not load audio file from storage")
+                raise AudioProcessingError("No se pudo cargar el archivo de audio desde almacenamiento")
             
             features = extract_features_from_audio(
                 audio_bytes,
                 source_name=audio_record.original_filename or audio_record.stored_filename,
             )
         
-        # Validate features
+        # Validar biomarcadores.
         is_valid, missing_features = validate_features_for_prediction(features)
         if not is_valid:
-            logger.warning(f"Missing features: {missing_features}, using available features")
+            logger.warning(f"Biomarcadores faltantes o inválidos: {missing_features}; se usarán los disponibles")
 
         feature_set = store_biomarker_feature_set(
             db=db,
@@ -313,20 +313,20 @@ def process_audio_pipeline(
             missing_features=missing_features,
         )
         
-        # Create Parkinson diagnosis
+        # Crear diagnóstico preliminar de Parkinson.
         diagnosis = create_parkinson_diagnosis(db, user_id, features, audio_record_id)
 
-        # Link diagnosis in notes (features live exclusively in BiomarkerFeature)
+        # Vincular diagnóstico en notes; los biomarcadores viven en BiomarkerFeature.
         store_processing_result(db, audio_record_id, diagnosis.id)
         
-        logger.info(f"Successfully processed audio pipeline for record {audio_record_id}")
+        logger.info(f"Pipeline de audio procesado correctamente para el registro {audio_record_id}")
         
         return {
             "audio_record_id": audio_record_id,
             "status": "success",
             "features": features,
             "diagnosis_id": diagnosis.id,
-            "prediction": "positive" if diagnosis.final_description and "detected" in diagnosis.final_description.lower() else "negative",
+            "prediction": "positive" if diagnosis.final_description and diagnosis.final_description.startswith("Posibles indicadores") else "negative",
             "probability": float(next((d.probability for d in diagnosis.details), 0.0)),
             "message": diagnosis.final_description,
             "feature_set_id": feature_set.id,
@@ -336,14 +336,14 @@ def process_audio_pipeline(
         }
         
     except Exception as e:
-        logger.error(f"Audio pipeline failed for record {audio_record_id}: {str(e)}", exc_info=True)
+        logger.error(f"Falló el pipeline de audio para el registro {audio_record_id}: {str(e)}", exc_info=True)
         audio_record.status = "failed"
         audio_record.notes = json.dumps({
             "processing_error": str(e),
         })
         audio_record.updated_at = datetime.now(timezone.utc)
         db.commit()
-        raise AudioPipelineError(f"Audio pipeline failed: {str(e)}")
+        raise AudioPipelineError(f"Falló el pipeline de audio: {str(e)}")
 
 
 def batch_process_user_audio(
@@ -352,20 +352,20 @@ def batch_process_user_audio(
     limit: int = 10
 ) -> List[Dict]:
     """
-    Process multiple audio records for a user.
+    Procesa varios registros de audio de un usuario.
     
-    Args:
-        db: Database session
-        user_id: User ID
-        limit: Maximum number of records to process
+    Argumentos:
+        db: Sesión de base de datos
+        user_id: ID del usuario
+        limit: Máximo número de registros a procesar
         
-    Returns:
-        List of processing results
+    Retorna:
+        Lista con resultados del procesamiento
     """
-    # Get unprocessed audio records for user
+    # Obtener registros no procesados del usuario.
     audio_records = db.query(AudioRecord).filter(
         AudioRecord.user_id == user_id,
-        AudioRecord.status.in_(["uploaded", "failed"]),  # Retry failed ones
+        AudioRecord.status.in_(["uploaded", "failed"]),  # Reintentar fallidos.
         AudioRecord.deleted_at.is_(None)
     ).order_by(AudioRecord.created_at.desc()).limit(limit).all()
     
@@ -386,16 +386,16 @@ def batch_process_user_audio(
 
 def get_audio_analysis_summary(db: Session, user_id: int) -> Dict:
     """
-    Get summary of audio analysis for a user.
+    Obtiene el resumen de análisis de audio de un usuario.
     
-    Args:
-        db: Database session
-        user_id: User ID
+    Argumentos:
+        db: Sesión de base de datos
+        user_id: ID del usuario
         
-    Returns:
-        Summary dictionary
+    Retorna:
+        Diccionario de resumen
     """
-    # Count audio records by status
+    # Contar registros de audio por estado.
     status_counts = {}
     audio_records = db.query(AudioRecord).filter(
         AudioRecord.user_id == user_id,
@@ -405,12 +405,12 @@ def get_audio_analysis_summary(db: Session, user_id: int) -> Dict:
     for record in audio_records:
         status_counts[record.status] = status_counts.get(record.status, 0) + 1
     
-    # Get recent diagnoses
+    # Obtener diagnósticos recientes.
     recent_diagnoses = db.query(Diagnosis).filter(
         Diagnosis.user_id == user_id
     ).order_by(Diagnosis.generated_at.desc()).limit(5).all()
     
-    # Extract features from processed audio
+    # Extraer biomarcadores de audios procesados.
     processed_features = []
     for record in audio_records:
         if record.status == "processed":
@@ -440,7 +440,7 @@ def get_audio_analysis_summary(db: Session, user_id: int) -> Dict:
                 "id": d.id,
                 "generated_at": d.generated_at,
                 "status": d.status,
-                "description": d.final_description or "No description"
+                "description": d.final_description or "Sin descripción"
             }
             for d in recent_diagnoses
         ],

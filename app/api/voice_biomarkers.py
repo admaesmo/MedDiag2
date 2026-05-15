@@ -1,5 +1,5 @@
 """
-Lightweight endpoint for direct voice biomarker extraction from uploaded audio.
+Endpoint ligero para extracción directa de biomarcadores de voz desde audio cargado.
 """
 
 from __future__ import annotations
@@ -33,9 +33,9 @@ router = APIRouter(prefix="/audio/biomarkers", tags=["audio", "voice-biomarkers"
 @router.post("/extract", response_model=VoiceBiomarkerExtractionResponse)
 async def extract_voice_biomarkers_endpoint(file: UploadFile = File(...)):
     """
-    Receive an audio file, normalize it to mono/16 kHz/WAV and return both the
-    requested Parselmouth biomarkers and a direct inference-ready Parkinson
-    payload built from the current 22-feature model contract.
+    Recibe un archivo de audio, lo normaliza a mono/16 kHz/WAV y devuelve los
+    biomarcadores Parselmouth solicitados junto con una carga lista para
+    inferencia directa según el contrato actual de 22 características.
     """
 
     audio_bytes = await file.read()
@@ -77,7 +77,7 @@ async def extract_voice_biomarkers_endpoint(file: UploadFile = File(...)):
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected error while extracting voice biomarkers: {exc}",
+            detail=f"Error inesperado al extraer biomarcadores de voz: {exc}",
         )
     finally:
         cleanup_prepared_audio(prepared_audio)

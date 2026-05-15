@@ -1,5 +1,5 @@
 """
-Business logic for audio records: save files, CRUD in DB.
+Lógica de negocio para registros de audio: guardar archivos y CRUD en base de datos.
 """
 
 import os
@@ -26,7 +26,7 @@ MAX_FILE_SIZE = int(os.getenv("MAX_AUDIO_FILE_SIZE_MB", "25")) * 1024 * 1024  # 
 
 
 def validate_audio_file(content_type: Optional[str], file_size: int) -> None:
-    """Raise ValueError if the file is not an allowed audio type or is too large."""
+    """Lanza ValueError si el audio no tiene un tipo permitido o es demasiado grande."""
     normalized_content_type = (content_type or "").split(";", 1)[0].strip().lower()
 
     if normalized_content_type and normalized_content_type not in ALLOWED_MIME_TYPES:
@@ -46,7 +46,7 @@ def save_audio_file(
     content_type: Optional[str],
 ) -> dict:
     """
-    Persist the audio file and return metadata dict (uuid, stored_filename, etc.).
+    Persiste el archivo de audio y devuelve metadatos (uuid, stored_filename, etc.).
     """
     audio_uuid = str(_uuid.uuid4())
     ext = _safe_extension(original_filename, content_type)
@@ -75,7 +75,7 @@ def create_audio_record(
     language_code: Optional[str] = None,
     notes: Optional[str] = None,
 ) -> AudioRecord:
-    """Insert a row in audio_records."""
+    """Inserta una fila en audio_records."""
     record = AudioRecord(
         uuid=file_meta["uuid"],
         user_id=user_id,
@@ -102,7 +102,7 @@ def list_user_audios(
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[List[AudioRecord], int]:
-    """Return (items, total) for a user's audio records (not soft-deleted)."""
+    """Devuelve (items, total) para audios del usuario no eliminados lógicamente."""
     q = db.query(AudioRecord).filter(
         AudioRecord.user_id == user_id,
         AudioRecord.deleted_at.is_(None),
@@ -129,7 +129,7 @@ def soft_delete_audio(db: Session, record: AudioRecord) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# Utilidades internas
 # ---------------------------------------------------------------------------
 
 _MIME_TO_EXT = {
@@ -144,10 +144,10 @@ _MIME_TO_EXT = {
 
 
 def _safe_extension(filename: str, content_type: Optional[str]) -> str:
-    """Derive a safe file extension."""
-    # Try from content-type first
+    """Deriva una extensión segura para el archivo."""
+    # Intentar primero desde content-type.
     if content_type and content_type in _MIME_TO_EXT:
         return _MIME_TO_EXT[content_type]
-    # Fallback: from original filename
+    # Respaldo: usar el nombre original.
     _, ext = os.path.splitext(filename)
     return ext.lower() if ext else ".bin"

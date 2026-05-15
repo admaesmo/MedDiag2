@@ -1,7 +1,7 @@
 """
-Storage backends — local filesystem now, S3 later.
+Backends de almacenamiento: sistema local ahora, S3 después.
 
-The active backend is selected via the STORAGE_PROVIDER env var.
+El backend activo se selecciona mediante la variable de entorno STORAGE_PROVIDER.
 """
 
 import os
@@ -17,21 +17,21 @@ STORAGE_LOCAL_PATH = os.getenv("STORAGE_LOCAL_PATH", "./storage/audio")
 
 
 class StorageBackend(ABC):
-    """Abstract interface every storage provider must implement."""
+    """Interfaz abstracta que todo proveedor de almacenamiento debe implementar."""
 
     @abstractmethod
     def save(self, file: BinaryIO, path: str) -> str:
-        """Persist *file* at *path* and return the stored path / key."""
+        """Persiste *file* en *path* y devuelve la ruta o clave almacenada."""
         ...
 
     @abstractmethod
     def load(self, path: str) -> bytes | None:
-        """Read and return object bytes from *path* (or None if missing)."""
+        """Lee y devuelve los bytes desde *path*, o None si no existe."""
         ...
 
     @abstractmethod
     def delete(self, path: str) -> None:
-        """Remove the object at *path*."""
+        """Elimina el objeto ubicado en *path*."""
         ...
 
     @abstractmethod
@@ -40,7 +40,7 @@ class StorageBackend(ABC):
 
 
 class LocalStorageBackend(StorageBackend):
-    """Stores files on the local filesystem under STORAGE_LOCAL_PATH."""
+    """Almacena archivos en el sistema local bajo STORAGE_LOCAL_PATH."""
 
     def __init__(self, root: str = STORAGE_LOCAL_PATH):
         self.root = root
