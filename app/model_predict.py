@@ -72,24 +72,10 @@ def _predict_binary(model, ordered_features: List[str], features: Dict[str, floa
     label = int(model.predict(x)[0])
     return label, proba
 
-#def _predict_binary(model, ordered_features: List[str], features: Dict[str, float]) -> Tuple[int, float]:
-    """Return predicted class and probability (best effort if no predict_proba)."""
-    x = np.array([[float(features[f]) for f in ordered_features]])
 
-    supports_proba = hasattr(model, "predict_proba") and bool(getattr(model, "probability", True))
-    if supports_proba:
-        try:
-            proba = float(model.predict_proba(x)[0][1])
-        except Exception:
-            pred = model.predict(x)[0]
-            # fallback probability when predict_proba is not usable at runtime
-            proba = 1.0 if pred == 1 else 0.0
-    else:
-        pred = model.predict(x)[0]
-        # fallback probability when model has no predict_proba
-        proba = 1.0 if pred == 1 else 0.0
-    label = int(model.predict(x)[0])
-    return label, proba
+# NOTA: predict_diabetes y predict_heart se mantienen por compatibilidad
+#       externa, pero la pipeline activa solo usa predict_parkinson.
+
 
 def predict_diabetes(features: Dict[str, float]) -> Tuple[int, float]:
     return _predict_binary(diabetes_model, DIABETES_FEATURE_ORDER, features)

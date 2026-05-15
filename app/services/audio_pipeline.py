@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 
 from app.models import AudioRecord, BiomarkerFeature, Diagnosis, DiagnosisDetail, Disease, User
 from app.model_predict import predict_parkinson, PARK_FEATURE_ORDER
@@ -58,60 +57,40 @@ def validate_features_for_prediction(features: Dict[str, float]) -> Tuple[bool, 
     return len(missing_features) == 0, missing_features
 
 
-def store_extracted_features(
+def store_processing_result(
     db: Session,
     audio_record_id: int,
-    features: Dict[str, float],
-    diagnosis_id: Optional[int] = None,
+    diagnosis_id: int,
 ) -> None:
     """
-    Store extracted features in the audio record as JSON.
-    
-    Args:
-        db: Database session
-        audio_record_id: ID of the audio record
-        features: Dictionary of extracted features
+    Mark audio as processed and link diagnosis ID in notes.
+
+    Features are persisted exclusively in ``BiomarkerFeature``.
+    The ``notes`` field stores only the diagnosis reference
+    and any pre-existing metadata.
     """
     audio_record = db.query(AudioRecord).filter(AudioRecord.id == audio_record_id).first()
     if not audio_record:
         raise AudioPipelineError(f"Audio record {audio_record_id} not found")
-    
-    notes_payload = {
-        "extracted_features": features,
-    }
-    if diagnosis_id is not None:
-        notes_payload["diagnosis_id"] = diagnosis_id
 
-    # Merge any existing non-JSON notes as metadata.
+    # Preserve existing context, e.g. original `notes` from upload
+    notes_payload: dict = {}
     if audio_record.notes:
         try:
-            existing_notes = json.loads(audio_record.notes)
-            if isinstance(existing_notes, dict):
-                existing_notes.update(notes_payload)
-                notes_payload = existing_notes
+            existing = json.loads(audio_record.notes)
+            if isinstance(existing, dict):
+                notes_payload.update(existing)
             else:
-                notes_payload["original_notes"] = existing_notes
+                notes_payload["original_notes"] = existing
         except json.JSONDecodeError:
             notes_payload["original_notes"] = audio_record.notes
 
-    audio_record.notes = json.dumps(notes_payload, indent=2)
-    
-    # Update status and timestamp
+    notes_payload["diagnosis_id"] = diagnosis_id
+    audio_record.notes = json.dumps(notes_payload, indent=2, default=str)
+
     audio_record.status = "processed"
     audio_record.updated_at = datetime.now(timezone.utc)
-    try:
-        db.commit()
-    except IntegrityError:
-        # Backward compatibility for environments with older status constraints.
-        db.rollback()
-        audio_record = db.query(AudioRecord).filter(AudioRecord.id == audio_record_id).first()
-        if not audio_record:
-            raise AudioPipelineError(f"Audio record {audio_record_id} not found after rollback")
-
-        audio_record.notes = json.dumps(notes_payload, indent=2)
-        audio_record.status = "transcribed"
-        audio_record.updated_at = datetime.now(timezone.utc)
-        db.commit()
+    db.commit()
 
 
 def store_biomarker_feature_set(
@@ -268,10 +247,11 @@ def process_audio_pipeline(
     if audio_record.status in {"processed", "transcribed"}:
         logger.info(f"Audio record {audio_record_id} already processed")
         features = load_feature_set_payload(get_latest_feature_set(db, audio_record_id))
-        if audio_record.notes:
+        # Backward compat: legacy records may have features embedded in notes
+        if not features and audio_record.notes:
             try:
                 notes_data = json.loads(audio_record.notes)
-                if "extracted_features" in notes_data and not features:
+                if "extracted_features" in notes_data:
                     features = notes_data["extracted_features"]
             except Exception:
                 pass
@@ -336,8 +316,8 @@ def process_audio_pipeline(
         # Create Parkinson diagnosis
         diagnosis = create_parkinson_diagnosis(db, user_id, features, audio_record_id)
 
-        # Store features in audio record with diagnosis linkage
-        store_extracted_features(db, audio_record_id, features, diagnosis.id)
+        # Link diagnosis in notes (features live exclusively in BiomarkerFeature)
+        store_processing_result(db, audio_record_id, diagnosis.id)
         
         logger.info(f"Successfully processed audio pipeline for record {audio_record_id}")
         
