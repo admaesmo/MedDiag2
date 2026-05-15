@@ -1,6 +1,5 @@
 """Deterministic nonlinear voice feature extraction.
-
-Implements practical approximations for:
+Implementa solucuionaes praxticas para:
 - DFA (Detrended Fluctuation Analysis)
 - D2 (Correlation Dimension via Grassberger-Procaccia style estimator)
 - PPE (Pitch Period Entropy)
