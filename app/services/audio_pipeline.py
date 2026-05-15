@@ -292,7 +292,20 @@ def process_audio_pipeline(
         audio_record.status = "processing"
         audio_record.updated_at = datetime.now(timezone.utc)
         db.commit()
-        
+
+        # --- QUALITY CONTROL GATE ---
+        # Run QC before biomarker extraction; if the audio fails quality
+        # checks it is flagged as rejected and no features are computed.
+        from app.services.quality_control import run_quality_check
+
+        qc_report = run_quality_check(db, audio_record_id)
+        if not qc_report.is_valid:
+            reason = qc_report.rejection_reason or "Audio did not pass quality control"
+            logger.warning(f"QC rejected audio record {audio_record_id}: {reason}")
+            raise AudioPipelineError(
+                f"Quality control rejected: {reason}"
+            )
+
         # Extract features using audio_processing service
         features = process_audio_file(audio_record_id, db)
         if not features:

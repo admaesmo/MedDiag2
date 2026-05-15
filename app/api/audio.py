@@ -373,3 +373,87 @@ def get_audio_features(
         return {"audio_id": audio_id, "features": features}
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Failed to parse audio features.")
+
+
+# ---------------------------------------------------------------------------
+# Quality Control Endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{audio_id}/quality")
+def get_audio_quality_report(
+    audio_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get the latest quality-control report for an audio record. Owner or admin only."""
+    record = audio_service.get_audio_record(db, audio_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Audio record not found.")
+
+    if record.user_id != current_user.id and not _is_admin(db, current_user):
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    from app.services.quality_control import get_latest_quality_report
+    report = get_latest_quality_report(db, audio_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="No quality report available for this audio.")
+
+    return {
+        "id": report.id,
+        "audio_record_id": report.audio_record_id,
+        "is_valid": report.is_valid,
+        "quality_score": report.quality_score,
+        "rejection_reason": report.rejection_reason,
+        "duration_seconds": report.duration_seconds,
+        "rms_energy": report.rms_energy,
+        "peak_amplitude": report.peak_amplitude,
+        "clipping_detected": report.clipping_detected,
+        "clipping_ratio": report.clipping_ratio,
+        "snr_db": report.snr_db,
+        "silence_ratio": report.silence_ratio,
+        "noise_floor_db": report.noise_floor_db,
+        "bandwidth_hz": report.bandwidth_hz,
+        "created_at": report.created_at,
+    }
+
+
+@router.post("/{audio_id}/quality/check")
+def run_audio_quality_check(
+    audio_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Run (or re-run) quality control on an audio record. Owner or admin only."""
+    from app.services.quality_control import run_quality_check
+
+    record = audio_service.get_audio_record(db, audio_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Audio record not found.")
+
+    if record.user_id != current_user.id and not _is_admin(db, current_user):
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    try:
+        report = run_quality_check(db, audio_id)
+        return {
+            "id": report.id,
+            "audio_record_id": report.audio_record_id,
+            "is_valid": report.is_valid,
+            "quality_score": report.quality_score,
+            "rejection_reason": report.rejection_reason,
+            "duration_seconds": report.duration_seconds,
+            "rms_energy": report.rms_energy,
+            "peak_amplitude": report.peak_amplitude,
+            "clipping_detected": report.clipping_detected,
+            "clipping_ratio": report.clipping_ratio,
+            "snr_db": report.snr_db,
+            "silence_ratio": report.silence_ratio,
+            "noise_floor_db": report.noise_floor_db,
+            "bandwidth_hz": report.bandwidth_hz,
+            "created_at": report.created_at,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=f"Quality check failed: {exc}")

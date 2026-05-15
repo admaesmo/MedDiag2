@@ -102,7 +102,8 @@ class AudioRecord(Base):
 
     language_code = Column(String(10), nullable=True)
     status = Column(String(50), nullable=False, default="uploaded")
-    # status values: uploaded, processing, processed/transcribed, failed, archived
+    # status values: uploaded, processing, quality_checked, rejected, 
+    #               partial_features, processed/transcribed, failed, archived
 
     transcript_text = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
@@ -113,7 +114,8 @@ class AudioRecord(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('uploaded','processing','processed','transcribed','failed','archived')",
+            "status IN ('uploaded','processing','quality_checked','rejected',"
+            "'partial_features','processed','transcribed','failed','archived')",
             name="ck_audio_status",
         ),
     )
@@ -124,6 +126,50 @@ class AudioRecord(Base):
         back_populates="audio_record",
         cascade="all, delete-orphan",
     )
+    quality_reports = relationship(
+        "AudioQualityReport",
+        back_populates="audio_record",
+        cascade="all, delete-orphan",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Quality Control
+# ---------------------------------------------------------------------------
+
+
+class AudioQualityReport(Base):
+    """Per-audio quality-control report used as a gate before biomarker extraction."""
+
+    __tablename__ = "audio_quality_reports"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    audio_record_id = Column(
+        Integer,
+        ForeignKey("audio_records.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Overall verdict
+    is_valid = Column(Boolean, nullable=False, default=True)
+    quality_score = Column(Float, nullable=True)  # 0.0 … 1.0
+    rejection_reason = Column(Text, nullable=True)
+
+    # Signal-level metrics
+    duration_seconds = Column(Float, nullable=True)
+    rms_energy = Column(Float, nullable=True)
+    peak_amplitude = Column(Float, nullable=True)
+    clipping_detected = Column(Boolean, nullable=False, default=False)
+    clipping_ratio = Column(Float, nullable=True)  # fraction of clipped frames
+    snr_db = Column(Float, nullable=True)  # estimated signal-to-noise ratio
+    silence_ratio = Column(Float, nullable=True)  # fraction near-zero frames
+
+    noise_floor_db = Column(Float, nullable=True)  # estimated noise floor
+    bandwidth_hz = Column(Float, nullable=True)  # approximate occupied bandwidth
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    audio_record = relationship("AudioRecord", back_populates="quality_reports")
 
 
 class BiomarkerFeature(Base):
