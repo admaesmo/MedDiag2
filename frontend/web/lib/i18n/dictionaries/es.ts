@@ -114,6 +114,8 @@ const es = {
     biomarkerHnrMean: "HNR medio",
     biomarkerHnrMeanInfo: "Promedio de la relación armónicos-ruido calculada en la señal vocal.",
     biomarkerMetadataLabel: "Audio normalizado",
+    modelFeaturesTitle: "Todas las características del modelo (22)",
+    modelFeaturesHint: "Vector completo de 22 características de Parkinson extraído del audio para la inferencia directa.",
     directModelResultLabel: "Resultado directo del modelo actual",
     modelVectorCoverageLabel: "Cobertura del vector del modelo",
     consentTitle: "Consentimiento informado requerido",

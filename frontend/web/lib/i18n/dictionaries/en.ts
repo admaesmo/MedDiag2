@@ -114,6 +114,8 @@ const en = {
     biomarkerHnrMean: "Mean HNR",
     biomarkerHnrMeanInfo: "Average harmonics-to-noise ratio computed from the voice signal.",
     biomarkerMetadataLabel: "Normalized audio",
+    modelFeaturesTitle: "All model features (22)",
+    modelFeaturesHint: "Complete 22-feature Parkinson vector extracted from audio for direct inference.",
     directModelResultLabel: "Direct result from the current model",
     modelVectorCoverageLabel: "Model vector coverage",
     consentTitle: "Informed consent required",
