@@ -136,6 +136,13 @@ const ptBR = {
     audioReadyForInference: "Áudio pronto. Você já pode executar a inferência.",
     noAudioForInference: "Ainda não há áudio pronto para inferência.",
     featureLoadError: "Não foi possível carregar os biomarcadores extraídos do áudio.",
+    uploadAudioFile: "Enviar arquivo de áudio",
+    uploadAudioFileHint: "Selecione um arquivo WAV ou MP3 para analisar",
+    uploadAudioSuccess: "Áudio enviado com sucesso do arquivo",
+    uploadAudioError: "Não foi possível enviar o arquivo de áudio.",
+    selectAudioFile: "Selecionar arquivo",
+    invalidFileType: "Formato de arquivo não suportado. Use WAV ou MP3.",
+    fileTooLarge: "O arquivo é muito grande. Máximo 25 MB.",
   },
   settings: {
     title: "Configurações",

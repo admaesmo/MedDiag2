@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { isLocalAuthEnabled } from "@/lib/auth-mode";
 import { localAuthCookieNames } from "@/lib/local-auth-shared";
-import { createClient } from "@/lib/supabase/server";
 
 export default async function HomePage() {
   if (isLocalAuthEnabled) {
@@ -11,6 +10,7 @@ export default async function HomePage() {
     redirect(token ? "/dashboard" : "/login");
   }
 
+  const { createClient } = await import("@/lib/supabase/server");
   const supabase = await createClient();
   const {
     data: { user },

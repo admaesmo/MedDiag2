@@ -136,6 +136,13 @@ const es = {
     audioReadyForInference: "Audio listo. Ya puedes ejecutar inferencia.",
     noAudioForInference: "Aún no hay un audio listo para inferencia.",
     featureLoadError: "No se pudieron cargar los biomarcadores del audio.",
+    uploadAudioFile: "Subir archivo de audio",
+    uploadAudioFileHint: "Selecciona un archivo WAV o MP3 para analizar",
+    uploadAudioSuccess: "Audio subido correctamente desde archivo",
+    uploadAudioError: "No se pudo subir el archivo de audio.",
+    selectAudioFile: "Seleccionar archivo",
+    invalidFileType: "Formato de archivo no soportado. Usa WAV o MP3.",
+    fileTooLarge: "El archivo es demasiado grande. Máximo 25 MB.",
   },
   settings: {
     title: "Configuración",

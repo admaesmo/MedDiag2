@@ -136,6 +136,13 @@ const en = {
     audioReadyForInference: "Audio is ready. You can run inference now.",
     noAudioForInference: "There is no audio ready for inference yet.",
     featureLoadError: "Unable to load extracted audio biomarkers.",
+    uploadAudioFile: "Upload audio file",
+    uploadAudioFileHint: "Select a WAV or MP3 file to analyze",
+    uploadAudioSuccess: "Audio uploaded successfully from file",
+    uploadAudioError: "Unable to upload audio file.",
+    selectAudioFile: "Select file",
+    invalidFileType: "Unsupported file format. Use WAV or MP3.",
+    fileTooLarge: "File is too large. Maximum 25 MB.",
   },
   settings: {
     title: "Settings",

@@ -57,6 +57,8 @@ export default function ParkinsonPage() {
   const [isExtractingBiomarkers, setIsExtractingBiomarkers] = useState(false);
   const [audioUploadMessage, setAudioUploadMessage] = useState<string | null>(null);
   const [audioUploadError, setAudioUploadError] = useState<string | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [biomarkerMessage, setBiomarkerMessage] = useState<string | null>(null);
   const [biomarkerError, setBiomarkerError] = useState<string | null>(null);
   const [biomarkerResponse, setBiomarkerResponse] = useState<VoiceBiomarkerExtractionResponse | null>(null);
@@ -293,6 +295,84 @@ export default function ParkinsonPage() {
     }
   };
 
+  const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Reset file input so the same file can be selected again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    // Validate file type
+    const validTypes = ["audio/wav", "audio/mp3", "audio/mpeg", "audio/ogg", "audio/webm", "audio/mp4", "audio/x-m4a", "audio/x-wav"];
+    const isWav = file.name.toLowerCase().endsWith(".wav");
+    const isMp3 = file.name.toLowerCase().endsWith(".mp3");
+    const isOgg = file.name.toLowerCase().endsWith(".ogg");
+    const isWebm = file.name.toLowerCase().endsWith(".webm");
+    const isM4a = file.name.toLowerCase().endsWith(".m4a");
+    if (!isWav && !isMp3 && !isOgg && !isWebm && !isM4a && !validTypes.includes(file.type)) {
+      setAudioUploadError(t(locale, "parkinson", "invalidFileType"));
+      return;
+    }
+
+    // Validate file size (25 MB max)
+    const maxSize = 25 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setAudioUploadError(t(locale, "parkinson", "fileTooLarge"));
+      return;
+    }
+
+    setAudioUploadError(null);
+    setAudioUploadMessage(null);
+    setBiomarkerError(null);
+    setBiomarkerMessage(null);
+    setBiomarkerResponse(null);
+    prediction.reset();
+
+    const extension = file.name.split(".").pop() || "wav";
+    const uploadFileName = `uploaded-${Date.now()}.${extension}`;
+
+    // Extract biomarkers from the uploaded file
+    try {
+      setIsUploadingFile(true);
+      const biomarkers = await extractVoiceBiomarkersMultipart(file, uploadFileName);
+      setBiomarkerResponse(biomarkers);
+      setBiomarkerMessage(t(locale, "parkinson", "biomarkerSuccess"));
+    } catch (error) {
+      setBiomarkerResponse(null);
+      setBiomarkerMessage(null);
+      setBiomarkerError(
+        error instanceof Error ? error.message : t(locale, "parkinson", "biomarkerExtractError"),
+      );
+      setIsUploadingFile(false);
+      return;
+    }
+
+    // Upload to API
+    if (!accessToken && !mockApiEnabled) {
+      setAudioUploadError(t(locale, "parkinson", "authRequiredForUpload"));
+      setIsUploadingFile(false);
+      return;
+    }
+
+    try {
+      const response = await uploadAudioMultipart(accessToken ?? "", file, uploadFileName, {
+        sourceType: "upload",
+        languageCode: locale.split("-")[0],
+      });
+
+      setAudioUploadMessage(`${t(locale, "parkinson", "uploadAudioSuccess")}: #${response.audio_id}`);
+      queryClient.invalidateQueries({ queryKey: ["audio", "me"] });
+      queryClient.invalidateQueries({ queryKey: ["audio", "me", "parkinson"] });
+    } catch {
+      setAudioUploadMessage(null);
+      setAudioUploadError(t(locale, "parkinson", "uploadAudioError"));
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
+
   const recordingErrorMessage =
     recording.error === "recording_not_supported"
       ? t(locale, "parkinson", "recordingNotSupported")
@@ -410,11 +490,11 @@ export default function ParkinsonPage() {
             ))}
           </div>
 
-          <div className="mt-8 flex items-center justify-center gap-3">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Button
               size="lg"
               onClick={handleRecordButtonClick}
-              disabled={isConsentOpen || isUploadingAudio || isExtractingBiomarkers}
+              disabled={isConsentOpen || isUploadingAudio || isExtractingBiomarkers || isUploadingFile}
             >
               <Play className="mr-2 h-4 w-4" />
               {isExtractingBiomarkers
@@ -436,6 +516,23 @@ export default function ParkinsonPage() {
                 : isAudioProcessing
                   ? t(locale, "parkinson", "audioProcessing")
                   : t(locale, "parkinson", "runInference")}
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".wav,.mp3,.ogg,.webm,.m4a,audio/*"
+              className="hidden"
+              onChange={handleFileSelected}
+            />
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isConsentOpen || isUploadingFile || recording.isRecording}
+            >
+              {isUploadingFile
+                ? t(locale, "parkinson", "uploading")
+                : t(locale, "parkinson", "uploadAudioFile")}
             </Button>
           </div>
 
