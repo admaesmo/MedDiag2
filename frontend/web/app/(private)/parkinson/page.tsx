@@ -468,7 +468,7 @@ export default function ParkinsonPage() {
 
             <div className="mt-6 flex gap-2">
               <Button variant="secondary" onClick={() => router.push("/dashboard")}>{t(locale, "parkinson", "decline")}</Button>
-              <Button type="button" onClick={handleContinue} disabled={!canProceed}>{t(locale, "common", "continue")}</Button>
+              <Button type="button" onClick={handleContinue}>{t(locale, "common", "continue")}</Button>
             </div>
           </Card>
         </div>
