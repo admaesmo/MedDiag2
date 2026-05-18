@@ -10,7 +10,6 @@ import { Input } from "@/components/atoms/input";
 import { loginSchema, type LoginValues } from "@/features/auth/schema";
 import { isLocalAuthEnabled, localAuthDefaults } from "@/lib/auth-mode";
 import { setLocalSession } from "@/lib/local-auth";
-import { issueDevToken } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 import { useUiStore } from "@/stores/ui-store";
 import { t } from "@/lib/i18n";
@@ -56,22 +55,13 @@ export default function LoginPage() {
         return;
       }
 
-      try {
-        const token = await issueDevToken(
-          localAuthDefaults.email,
-          localAuthDefaults.role,
-          localAuthDefaults.displayName,
-        );
-        setLocalSession(token.access_token, localAuthDefaults.email);
-        setIsLoading(false);
-        router.replace(nextPath);
-        router.refresh();
-        return;
-      } catch (err) {
-        setIsLoading(false);
-        setError(err instanceof Error ? err.message : "No fue posible iniciar sesion local.");
-        return;
-      }
+      // Generar un token simulado para desarrollo local
+      const mockToken = "dev_" + btoa(JSON.stringify({ email: localAuthDefaults.email, role: localAuthDefaults.role, ts: Date.now() }));
+      setLocalSession(mockToken, localAuthDefaults.email);
+      setIsLoading(false);
+      router.replace(nextPath);
+      router.refresh();
+      return;
     }
 
     const supabase = createClient();
