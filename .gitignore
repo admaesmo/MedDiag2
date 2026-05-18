@@ -32,6 +32,10 @@ Thumbs.db
 !readme.md
 !DEPLOY.md
 
+# Documentos internos de planificación (no deben ir a producción)
+Documentacion/GUIA_DESPLIEGUE_RENDER_VERCEL.md
+PLAN_MIGRACION_MODELO.md
+
 # Storage de audio
 storage/
 

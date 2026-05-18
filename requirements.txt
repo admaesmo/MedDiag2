@@ -19,3 +19,6 @@ praat-parselmouth>=0.4.3
 soundfile>=0.12.1
 pydub>=0.25.1
 pandas>=2.0.0
+
+# ML models
+xgboost>=2.0.0

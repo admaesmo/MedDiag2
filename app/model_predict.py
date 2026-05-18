@@ -1,12 +1,12 @@
 """
 Módulo de predicción — carga modelos serializados y ejecuta inferencia.
 
-El modelo de Parkinson (SVC con kernel linear) fue entrenado sobre datos
-escalados con StandardScaler.  Este módulo aplica el scaler antes de
-predecir para mantener la consistencia con el contrato de entrenamiento.
+El modelo de Parkinson (XGBoost) fue entrenado sobre datos escalados con
+StandardScaler.  Este módulo aplica el scaler antes de predecir para
+mantener la consistencia con el contrato de entrenamiento.
 
 Archivos esperados en ``saved_models/``:
-    - parkinsons_model.sav       (SVC entrenado sobre 22 features escaladas)
+    - parkinsons_model.sav       (XGBoost entrenado sobre 22 features escaladas)
     - parkinsons_scaler.sav      (StandardScaler ajustado sobre las 22 features)
     - diabetes_model.sav         (modelo de diabetes, sin scaler)
     - heart_disease_model.sav    (modelo cardíaco, sin scaler)
