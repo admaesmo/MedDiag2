@@ -2,20 +2,20 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 
 
-# ---- Token / Auth ----
+# ---- Token / autenticación ----
 
 class TokenPayload(BaseModel):
-    """Decoded JWT payload."""
+    """Contenido decodificado del JWT."""
     sub: str                            # auth_subject (UID)
     email: Optional[str] = None
     roles: List[str] = []
 
 
 class DevTokenRequest(BaseModel):
-    """Request body for the dev token endpoint."""
+    """Cuerpo de solicitud para el endpoint de token de desarrollo."""
     email: str = Field(..., example="dev@meddiag.com")
     role: str = Field("patient", example="patient")
-    display_name: Optional[str] = Field(None, example="Dev User")
+    display_name: Optional[str] = Field(None, example="Usuario Dev")
 
 
 class DevTokenResponse(BaseModel):
@@ -23,7 +23,7 @@ class DevTokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
-# ---- Current user info ----
+# ---- Información del usuario actual ----
 
 class UserOut(BaseModel):
     id: int

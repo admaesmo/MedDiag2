@@ -1,5 +1,5 @@
 """
-Auth endpoints — dev token generation & current user info.
+Endpoints de autenticación: generación de token dev e información del usuario.
 """
 
 import os
@@ -23,16 +23,16 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/dev/token", response_model=DevTokenResponse)
 def issue_dev_token(body: DevTokenRequest):
     """
-    Generate a JWT for local development / testing.
-    Only available when AUTH_PROVIDER=local.
+    Genera un JWT para desarrollo local o pruebas.
+    Solo está disponible cuando AUTH_PROVIDER=local.
     """
     if AUTH_PROVIDER != "local":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Dev tokens are only available when AUTH_PROVIDER=local.",
+            detail="Los tokens dev solo están disponibles cuando AUTH_PROVIDER=local.",
         )
 
-    sub = str(_uuid.uuid4())  # synthetic UID
+    sub = str(_uuid.uuid4())  # UID sintético.
     token = create_dev_token(
         sub=sub,
         email=body.email,
@@ -47,7 +47,7 @@ def me(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Return info about the authenticated user."""
+    """Devuelve información del usuario autenticado."""
     role_codes = [
         ur.role.code
         for ur in db.query(UserRole).filter(UserRole.user_id == current_user.id).all()

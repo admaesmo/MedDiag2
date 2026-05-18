@@ -21,7 +21,7 @@ from app.utils.database import Base
 
 
 # ---------------------------------------------------------------------------
-# Identity & Access
+# Identidad y acceso
 # ---------------------------------------------------------------------------
 
 class User(Base):
@@ -29,15 +29,15 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # --- legacy fields (kept for backward-compat) ---
+    # --- campos heredados (conservados por compatibilidad hacia atrás) ---
     name = Column(Text, nullable=True)
     phone_number = Column(Text)
     gender = Column(String(1), CheckConstraint("gender IN ('M','F','O')"))
     email = Column(Text, unique=True)
 
-    # --- new auth fields ---
+    # --- campos nuevos de autenticación ---
     auth_provider = Column(String(50), nullable=True)   # "local", "supabase", "firebase"
-    auth_subject = Column(String(255), nullable=True)    # UID from external provider
+    auth_subject = Column(String(255), nullable=True)    # UID del proveedor externo
     display_name = Column(Text, nullable=True)
     email_verified = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
@@ -103,7 +103,7 @@ class AudioRecord(Base):
 
     language_code = Column(String(10), nullable=True)
     status = Column(String(50), nullable=False, default="uploaded")
-    # 2.0 flow statuses plus legacy processed/transcribed compatibility.
+    # status values: uploaded, processing, processed/transcribed, failed, archived
 
     transcript_text = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
@@ -114,75 +114,16 @@ class AudioRecord(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ("
-            "'uploaded','preprocessing','processing','quality_checked','rejected',"
-            "'features_extracted','partial_features','inference_completed',"
-            "'processed','transcribed','failed','archived'"
-            ")",
+            "status IN ('uploaded','processing','processed','transcribed','failed','archived')",
             name="ck_audio_status",
         ),
     )
 
     user = relationship("User", back_populates="audio_records")
-    quality_reports = relationship("AudioQualityReport", back_populates="audio_record", cascade="all, delete-orphan")
-    biomarker_features = relationship("BiomarkerFeature", back_populates="audio_record", cascade="all, delete-orphan")
-
-
-class AudioQualityReport(Base):
-    __tablename__ = "audio_quality_reports"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    audio_record_id = Column(Integer, ForeignKey("audio_records.id", ondelete="CASCADE"), nullable=False)
-
-    quality_score = Column(Float, nullable=False)
-    is_valid = Column(Boolean, nullable=False, default=False)
-    quality_status = Column(String(50), nullable=False, default="invalid")
-    noise_level = Column(Float, nullable=True)
-    clipping = Column(Float, nullable=True)
-    silence_ratio = Column(Float, nullable=True)
-    rms = Column(Float, nullable=True)
-    peak_amplitude = Column(Float, nullable=True)
-    stability_score = Column(Float, nullable=True)
-    rejection_reason = Column(Text, nullable=True)
-    metrics_json = Column(JSON, nullable=True)
-
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-    __table_args__ = (
-        CheckConstraint("quality_score >= 0 AND quality_score <= 1", name="ck_audio_quality_score_range"),
-        CheckConstraint("quality_status IN ('valid','low_quality','invalid')", name="ck_audio_quality_status"),
-    )
-
-    audio_record = relationship("AudioRecord", back_populates="quality_reports")
-
-
-class BiomarkerFeature(Base):
-    __tablename__ = "biomarker_features"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    audio_record_id = Column(Integer, ForeignKey("audio_records.id", ondelete="CASCADE"), nullable=False)
-
-    extractor_version = Column(String(50), nullable=False)
-    feature_schema_version = Column(String(50), nullable=False)
-    features_json = Column(JSON, nullable=False)
-    feature_status = Column(String(50), nullable=False, default="complete")
-    ready_for_inference = Column(Boolean, nullable=False, default=False)
-    missing_features_json = Column(JSON, nullable=True)
-    invalid_features_json = Column(JSON, nullable=True)
-    diagnosis_id = Column(Integer, ForeignKey("diagnoses.id", ondelete="SET NULL"), nullable=True)
-
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-    __table_args__ = (
-        CheckConstraint("feature_status IN ('complete','partial','failed')", name="ck_biomarker_feature_status"),
-    )
-
-    audio_record = relationship("AudioRecord", back_populates="biomarker_features")
-    diagnosis = relationship("Diagnosis")
 
 
 # ---------------------------------------------------------------------------
-# Clinical (unchanged)
+# Clínico (sin cambios funcionales)
 # ---------------------------------------------------------------------------
 
 class Symptom(Base):

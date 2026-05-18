@@ -1,5 +1,5 @@
 """
-Audio endpoints — upload, list, detail, delete.
+Endpoints de audio — carga, listado, detalle y eliminación.
 """
 
 import json
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/audio", tags=["audio"])
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Utilidades
 # ---------------------------------------------------------------------------
 
 def _is_admin(db: Session, user: User) -> bool:
@@ -75,12 +75,12 @@ def _to_audio_record_out(record) -> AudioRecordOut:
 
 
 def _run_audio_processing_background(audio_id: int, user_id: int) -> None:
-    """Run processing in a dedicated DB session so upload request can return immediately."""
+    """Ejecuta el procesamiento en una sesión dedicada para responder rápido a la carga."""
     db = SessionLocal()
     try:
         process_audio_pipeline(db, audio_id, user_id)
     except Exception:
-        # process_audio_pipeline persists failed state and error context.
+        # process_audio_pipeline persiste el estado fallido y el contexto del error.
         pass
     finally:
         db.close()
@@ -101,24 +101,24 @@ async def upload_audio(
     db: Session = Depends(get_db),
 ):
     """
-    Upload an audio file.
-    Accepts multipart/form-data with the audio file and optional metadata.
+    Carga un archivo de audio.
+    Acepta multipart/form-data con el archivo y metadatos opcionales.
     """
-    # Read the file content to measure size
+    # Leer el contenido para medir el tamaño.
     contents = await file.read()
     file_size = len(contents)
 
-    # Validate
+    # Validar archivo.
     try:
         audio_service.validate_audio_file(file.content_type, file_size)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
-    # Reset file cursor for storage
+    # Reiniciar el cursor para almacenamiento.
     import io
     file_like = io.BytesIO(contents)
 
-    # Save to storage
+    # Guardar en almacenamiento.
     file_meta = audio_service.save_audio_file(
         file=file_like,
         user_id=current_user.id,
@@ -126,7 +126,7 @@ async def upload_audio(
         content_type=file.content_type,
     )
 
-    # Persist metadata in DB
+    # Persistir metadatos en base de datos.
     record = audio_service.create_audio_record(
         db=db,
         user_id=current_user.id,
@@ -139,11 +139,11 @@ async def upload_audio(
         notes=notes,
     )
 
-    # Expose processing state immediately in history while extraction runs.
+    # Mostrar el estado de procesamiento mientras corre la extracción.
     record.status = "processing"
     db.commit()
 
-    # Process stored audio in the background.
+    # Procesar el audio almacenado en segundo plano.
     background_tasks.add_task(_run_audio_processing_background, record.id, current_user.id)
 
     return AudioUploadResponse(
@@ -165,7 +165,7 @@ def list_my_audios(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List audio records for the authenticated user."""
+    """Lista los registros de audio del usuario autenticado."""
     items, total = audio_service.list_user_audios(
         db, current_user.id, status_filter=status_filter, limit=limit, offset=offset
     )
@@ -181,13 +181,13 @@ def get_audio(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get a single audio record. Owner or admin only."""
+    """Obtiene un registro de audio. Solo propietario o administrador."""
     record = audio_service.get_audio_record(db, audio_id)
     if not record:
-        raise HTTPException(status_code=404, detail="Audio record not found.")
+        raise HTTPException(status_code=404, detail="Registro de audio no encontrado.")
 
     if record.user_id != current_user.id and not _is_admin(db, current_user):
-        raise HTTPException(status_code=403, detail="Access denied.")
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
 
     return _to_audio_record_out(record)
 
@@ -198,20 +198,20 @@ def delete_audio(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Soft-delete an audio record. Owner or admin only."""
+    """Elimina lógicamente un registro de audio. Solo propietario o administrador."""
     record = audio_service.get_audio_record(db, audio_id)
     if not record:
-        raise HTTPException(status_code=404, detail="Audio record not found.")
+        raise HTTPException(status_code=404, detail="Registro de audio no encontrado.")
 
     if record.user_id != current_user.id and not _is_admin(db, current_user):
-        raise HTTPException(status_code=403, detail="Access denied.")
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
 
     audio_service.soft_delete_audio(db, record)
     db.commit()
 
 
 # ---------------------------------------------------------------------------
-# Audio Processing Endpoints
+# Endpoints de procesamiento de audio
 # ---------------------------------------------------------------------------
 
 from typing import Optional
@@ -227,7 +227,6 @@ from app.services.audio_pipeline import (
     process_audio_pipeline,
     batch_process_user_audio,
     get_audio_analysis_summary,
-    get_latest_biomarker_features,
     AudioPipelineError
 )
 from app.services.audio_quality import get_latest_audio_quality_report
@@ -241,32 +240,32 @@ def process_audio(
     db: Session = Depends(get_db),
 ):
     """
-    Process an audio file to extract features and run Parkinson's prediction.
+    Procesa un audio para extraer biomarcadores y ejecutar la predicción de Parkinson.
     """
-    # Verify ownership
+    # Verificar propiedad.
     record = audio_service.get_audio_record(db, audio_id)
     if not record:
-        raise HTTPException(status_code=404, detail="Audio record not found.")
+        raise HTTPException(status_code=404, detail="Registro de audio no encontrado.")
     
     if record.user_id != current_user.id and not _is_admin(db, current_user):
-        raise HTTPException(status_code=403, detail="Access denied.")
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
 
     if record.status in {"processing", "preprocessing", "quality_checked"}:
         return AudioProcessingResponse(
             audio_record_id=record.id,
             status="processing",
-            message="Audio is currently being processed.",
+            message="El audio se está procesando actualmente.",
         )
 
     if _is_ready_status(record.status):
         return AudioProcessingResponse(
             audio_record_id=record.id,
             status="already_processed",
-            message="Audio was previously processed.",
+            message="El audio ya había sido procesado.",
         )
     
     try:
-        # Process the audio pipeline
+        # Procesar el pipeline de audio.
         result = process_audio_pipeline(db, audio_id, current_user.id)
         
         return AudioProcessingResponse(
@@ -283,7 +282,7 @@ def process_audio(
     except AudioPipelineError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
 
 
 @router.post("/batch-process", response_model=BatchProcessingResponse)
@@ -293,9 +292,9 @@ def batch_process_audio(
     db: Session = Depends(get_db),
 ):
     """
-    Process multiple audio records for the current user.
+    Procesa varios registros de audio del usuario actual.
     """
-    limit = request.limit if not request.process_all else 1000  # Large limit for "all"
+    limit = request.limit if not request.process_all else 1000  # Límite amplio para "todos".
     
     try:
         results = batch_process_user_audio(db, current_user.id, limit)
@@ -319,7 +318,7 @@ def batch_process_audio(
             failed=failed
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Batch processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Falló el procesamiento por lotes: {str(e)}")
 
 
 @router.get("/analysis/summary", response_model=AudioAnalysisSummary)
@@ -328,13 +327,13 @@ def get_audio_analysis(
     db: Session = Depends(get_db),
 ):
     """
-    Get summary of audio analysis for the current user.
+    Obtiene el resumen de análisis de audio del usuario actual.
     """
     try:
         summary = get_audio_analysis_summary(db, current_user.id)
         return AudioAnalysisSummary(**summary)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get analysis summary: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"No se pudo obtener el resumen de análisis: {str(e)}")
 
 
 @router.get("/{audio_id}/features")
@@ -344,83 +343,40 @@ def get_audio_features(
     db: Session = Depends(get_db),
 ):
     """
-    Get extracted features from a processed audio record.
+    Obtiene los biomarcadores extraídos de un audio procesado.
     """
     record = audio_service.get_audio_record(db, audio_id)
     if not record:
-        raise HTTPException(status_code=404, detail="Audio record not found.")
+        raise HTTPException(status_code=404, detail="Registro de audio no encontrado.")
     
     if record.user_id != current_user.id and not _is_admin(db, current_user):
-        raise HTTPException(status_code=403, detail="Access denied.")
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
     
-    feature_row = get_latest_biomarker_features(db, audio_id)
-    if feature_row:
-        return {
-            "audio_id": audio_id,
-            "feature_status": feature_row.feature_status,
-            "ready_for_inference": feature_row.ready_for_inference,
-            "extractor_version": feature_row.extractor_version,
-            "feature_schema_version": feature_row.feature_schema_version,
-            "missing_features": feature_row.missing_features_json or [],
-            "invalid_features": feature_row.invalid_features_json or [],
-            "features": feature_row.features_json,
-        }
-
-    # Legacy fallback for records created before biomarker_features existed.
     if not _is_ready_status(record.status) or not record.notes:
         raise HTTPException(
             status_code=400, 
-            detail="Audio not processed or no features available."
+            detail="El audio no ha sido procesado o no hay biomarcadores disponibles."
         )
-    
+
+    # Fuente primaria: Feature Store.
+    feature_row = get_latest_feature_set(db, audio_id)
+    if feature_row is not None:
+        return {
+            "audio_id": audio_id,
+            "features": load_feature_set_payload(feature_row),
+            "feature_set_id": feature_row.id,
+            "extractor_version": feature_row.extractor_version,
+            "feature_schema_version": feature_row.feature_schema_version,
+            "partial_features": feature_row.is_partial,
+        }
+
+    # Compatibilidad hacia atrás: carga desde notes.
+    if not record.notes:
+        raise HTTPException(status_code=404, detail="No se encontró un conjunto de biomarcadores para este audio.")
+
     try:
         notes_data = json.loads(record.notes)
         features = notes_data.get("extracted_features", {})
-        
-        if not features:
-            # Try to find features in the notes structure
-            for key, value in notes_data.items():
-                if isinstance(value, dict) and any(f in value for f in ["MDVP:Fo(Hz)", "jitter", "shimmer"]):
-                    features = value
-                    break
-        
         return {"audio_id": audio_id, "features": features}
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Failed to parse audio features.")
-
-
-@router.get("/{audio_id}/quality")
-def get_audio_quality(
-    audio_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """
-    Get the latest quality-control report for an audio record.
-    """
-    record = audio_service.get_audio_record(db, audio_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Audio record not found.")
-
-    if record.user_id != current_user.id and not _is_admin(db, current_user):
-        raise HTTPException(status_code=403, detail="Access denied.")
-
-    report = get_latest_audio_quality_report(db, audio_id)
-    if not report:
-        raise HTTPException(status_code=404, detail="No quality report available for this audio.")
-
-    return {
-        "audio_id": audio_id,
-        "quality_score": report.quality_score,
-        "is_valid": report.is_valid,
-        "quality_status": report.quality_status,
-        "noise_level": report.noise_level,
-        "clipping": report.clipping,
-        "silence_ratio": report.silence_ratio,
-        "rms": report.rms,
-        "peak_amplitude": report.peak_amplitude,
-        "stability_score": report.stability_score,
-        "rejection_reason": report.rejection_reason,
-        "metrics": report.metrics_json or {},
-        "created_at": report.created_at,
-    }

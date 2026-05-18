@@ -1,9 +1,9 @@
 """
-Voice biomarker extraction service for Parkinson MVP integration.
+Servicio de extracción de biomarcadores de voz para integración MVP de Parkinson.
 
-This module provides a lightweight audio preprocessing + Parselmouth pipeline
-that normalizes uploaded audio to mono/16 kHz/WAV and extracts a small set of
-voice biomarkers without altering the broader audio persistence workflow.
+Este módulo provee un pipeline ligero de preprocesamiento + Parselmouth
+que normaliza audio cargado a mono/16 kHz/WAV y extrae un conjunto pequeño
+de biomarcadores de voz sin alterar el flujo general de persistencia de audio.
 """
 
 from __future__ import annotations
@@ -54,12 +54,12 @@ logger = logging.getLogger(__name__)
 
 
 class VoiceBiomarkerError(Exception):
-    """Raised when the input audio cannot be converted or analyzed."""
+    """Se lanza cuando el audio de entrada no puede convertirse o analizarse."""
 
 
 @dataclass
 class PreparedVoiceAudio:
-    """Normalized audio ready for Parselmouth analysis."""
+    """Audio normalizado listo para análisis con Parselmouth."""
 
     temp_wav_path: str
     sample_rate_hz: int
@@ -81,7 +81,7 @@ def _decode_audio_bytes(
     sample_rate_hz: int,
 ) -> Tuple[np.ndarray, int]:
     if not LIBROSA_AVAILABLE:
-        raise VoiceBiomarkerError("librosa is required to decode uploaded audio.")
+        raise VoiceBiomarkerError("librosa es requerido para decodificar el audio cargado.")
 
     suffix = _guess_suffix(source_name)
 
@@ -95,7 +95,7 @@ def _decode_audio_bytes(
             return waveform, sr
         except Exception as decode_error:
             if not PYDUB_AVAILABLE:
-                raise VoiceBiomarkerError(f"Failed to decode audio: {decode_error}") from decode_error
+                raise VoiceBiomarkerError(f"No se pudo decodificar el audio: {decode_error}") from decode_error
 
             try:
                 segment = AudioSegment.from_file(temp_input_path)
@@ -103,7 +103,7 @@ def _decode_audio_bytes(
                 samples = np.array(segment.get_array_of_samples(), dtype=np.float32)
 
                 if samples.size == 0:
-                    raise VoiceBiomarkerError("The uploaded audio does not contain readable samples.")
+                    raise VoiceBiomarkerError("El audio cargado no contiene muestras legibles.")
 
                 scale = float(1 << (8 * segment.sample_width - 1))
                 if scale > 0:
@@ -111,7 +111,7 @@ def _decode_audio_bytes(
 
                 return samples, segment.frame_rate
             except Exception as pydub_error:
-                raise VoiceBiomarkerError(f"Failed to decode audio: {pydub_error}") from decode_error
+                raise VoiceBiomarkerError(f"No se pudo decodificar el audio: {pydub_error}") from decode_error
     finally:
         try:
             os.remove(temp_input_path)
@@ -123,10 +123,10 @@ def prepare_audio_for_voice_biomarkers(
     audio_bytes: bytes,
     source_name: Optional[str] = None,
 ) -> PreparedVoiceAudio:
-    """Normalize uploaded audio to mono/16 kHz and persist a temporary WAV file."""
+    """Normaliza el audio cargado a mono/16 kHz y persiste un WAV temporal."""
 
     if not audio_bytes:
-        raise VoiceBiomarkerError("The uploaded audio file is empty.")
+        raise VoiceBiomarkerError("El archivo de audio cargado está vacío.")
 
     waveform, sample_rate_hz = _decode_audio_bytes(
         audio_bytes=audio_bytes,
@@ -135,11 +135,11 @@ def prepare_audio_for_voice_biomarkers(
     )
 
     if waveform.size == 0:
-        raise VoiceBiomarkerError("The uploaded audio does not contain valid waveform data.")
+        raise VoiceBiomarkerError("El audio cargado no contiene datos de forma de onda válidos.")
 
     duration_seconds = float(len(waveform) / sample_rate_hz)
     if duration_seconds <= 0:
-        raise VoiceBiomarkerError("The uploaded audio has an invalid duration.")
+        raise VoiceBiomarkerError("El audio cargado tiene una duración inválida.")
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_wav:
         temp_wav_path = temp_wav.name
@@ -155,7 +155,7 @@ def prepare_audio_for_voice_biomarkers(
 
 
 def cleanup_prepared_audio(prepared_audio: Optional[PreparedVoiceAudio]) -> None:
-    """Delete the temporary WAV file created during preprocessing."""
+    """Elimina el WAV temporal creado durante el preprocesamiento."""
 
     if not prepared_audio:
         return
@@ -171,14 +171,14 @@ def _read_normalized_audio_bytes(prepared_audio: PreparedVoiceAudio) -> bytes:
         with open(prepared_audio.temp_wav_path, "rb") as temp_wav:
             return temp_wav.read()
     except OSError as exc:
-        raise VoiceBiomarkerError(f"Failed to read normalized audio for analysis: {exc}") from exc
+        raise VoiceBiomarkerError(f"No se pudo leer el audio normalizado para análisis: {exc}") from exc
 
 
 def _ensure_finite_metric(value: float, metric_name: str) -> float:
     metric_value = float(value)
     if not np.isfinite(metric_value):
         raise VoiceBiomarkerError(
-            f"Could not compute a stable value for '{metric_name}' from the uploaded audio."
+            f"No se pudo calcular un valor estable para '{metric_name}' desde el audio cargado."
         )
     return metric_value
 
@@ -188,7 +188,7 @@ def extract_voice_biomarkers(
     pitch_floor_hz: float = DEFAULT_PITCH_FLOOR_HZ,
     pitch_ceiling_hz: float = DEFAULT_PITCH_CEILING_HZ,
 ) -> Dict[str, float]:
-    """Extract the requested Parselmouth biomarkers from normalized WAV audio."""
+    """Extrae los biomarcadores Parselmouth solicitados desde audio WAV normalizado."""
 
     try:
         sound = Sound(prepared_audio.temp_wav_path)
@@ -201,7 +201,7 @@ def extract_voice_biomarkers(
 
         if voiced_pitch.size == 0:
             raise VoiceBiomarkerError(
-                "No voiced frames were detected. Please upload a clearer voice sample."
+                "No se detectaron tramas con voz. Cargue una muestra de voz más clara."
             )
 
         point_process = call(sound, "To PointProcess (periodic, cc)", pitch_floor_hz, pitch_ceiling_hz)
@@ -227,17 +227,17 @@ def extract_voice_biomarkers(
     except VoiceBiomarkerError:
         raise
     except Exception as exc:
-        raise VoiceBiomarkerError(f"Failed to extract voice biomarkers: {exc}") from exc
+        raise VoiceBiomarkerError(f"No se pudieron extraer biomarcadores de voz: {exc}") from exc
 
     return biomarkers
 
 
 def extract_parkinson_model_features(prepared_audio: PreparedVoiceAudio) -> Dict[str, float]:
     """
-    Build the full 22-feature Parkinson vector from the normalized audio.
+    Construye el vector completo de 22 características de Parkinson desde el audio normalizado.
 
-    This reuses the project's current audio feature extractor so the direct
-    inference path remains aligned with the existing Parkinson model contract.
+    Reutiliza el extractor actual del proyecto para mantener la inferencia directa
+    alineada con el contrato del modelo de Parkinson existente.
     """
 
     return build_parkinson_features_parselmouth_primary(prepared_audio)
@@ -428,9 +428,11 @@ def build_parkinson_features_parselmouth_primary(prepared_audio: PreparedVoiceAu
             source_name="normalized.wav",
         )
     except AudioProcessingError as exc:
-        raise VoiceBiomarkerError(f"Failed to build Parkinson model features: {exc}") from exc
+        raise VoiceBiomarkerError(f"Failed to extract Parkinson model features: {exc}") from exc
+    except ValueError as exc:
+        raise VoiceBiomarkerError(f"Incomplete Parkinson model feature vector: {exc}") from exc
     except Exception as exc:
-        raise VoiceBiomarkerError(f"Failed to build Parkinson model features: {exc}") from exc
+        raise VoiceBiomarkerError(f"No se pudo construir el vector del modelo de Parkinson: {exc}") from exc
 
     merged_features = dict(support_features)
     merged_features.update(core_features)
@@ -447,11 +449,11 @@ def build_parkinson_features_parselmouth_primary(prepared_audio: PreparedVoiceAu
 
 def build_parkinson_model_bridge(biomarkers: Dict[str, float]) -> Dict[str, object]:
     """
-    Build a conservative bridge payload toward the current Parkinson model.
+    Construye una carga puente conservadora hacia el modelo actual de Parkinson.
 
-    The current model still expects the full 22-feature Oxford vector. This
-    bridge exposes only the directly mappable subset from the requested
-    biomarker set and leaves the rest explicit as missing.
+    El modelo actual espera el vector Oxford completo de 22 características.
+    Este puente expone solo el subconjunto directamente mapeable desde los
+    biomarcadores solicitados y deja el resto explícito como faltante.
     """
 
     mapped_features = {
@@ -469,8 +471,8 @@ def build_parkinson_model_bridge(biomarkers: Dict[str, float]) -> Dict[str, obje
         "missing_features": missing_features,
         "ready_for_direct_inference": len(missing_features) == 0,
         "note": (
-            "This partial bridge maps only the requested Parselmouth biomarkers. "
-            "Direct inference requires the complete 22-feature Parkinson vector."
+            "Este puente parcial mapea solo los biomarcadores Parselmouth solicitados. "
+            "La inferencia directa requiere el vector completo de 22 características de Parkinson."
         ),
     }
 
@@ -483,8 +485,8 @@ def build_parkinson_model_input(features: Dict[str, float]) -> Dict[str, object]
         "required_feature_count": len(PARK_FEATURE_ORDER),
         "ready_for_direct_inference": True,
         "note": (
-            "This feature vector is generated from the normalized audio using the "
-            "same extraction service that feeds the current Parkinson pipeline."
+            "Este vector de características se genera desde el audio normalizado usando "
+            "el mismo servicio de extracción que alimenta el pipeline actual de Parkinson."
         ),
     }
 
@@ -493,7 +495,7 @@ def run_parkinson_direct_inference(features: Dict[str, float]) -> Dict[str, obje
     try:
         prediction, probability = predict_parkinson(features)
     except Exception as exc:
-        raise VoiceBiomarkerError(f"Failed to run Parkinson inference: {exc}") from exc
+        raise VoiceBiomarkerError(f"No se pudo ejecutar la inferencia de Parkinson: {exc}") from exc
 
     return {
         "model_name": PARKINSON_MODEL_FILENAME,

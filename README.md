@@ -1,6 +1,7 @@
-# MedDiag - Sistema de Diagnostico Medico Inteligente
+# MedDiag2 — Tamizaje experimental de Parkinson mediante análisis de voz
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688?logo=fastapi&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-13+-black?logo=nextdotjs&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
@@ -8,27 +9,9 @@
 
 ## Descripción General
 
-MedDiag es un Sistema de Apoyo Diagnostico Medico basado en Inteligencia Artificial. Se desarrolló como un Producto Minimo Viable (MVP) durante el curso de Proyecto Integrador. La aplicación permite que los usuarios ingresen información sobre sus sintomas y obtener predicciones preliminares de posibles diagnosticos.
+**MedDiag2** es una plataforma web de **tamizaje experimental** de la enfermedad de Parkinson mediante análisis de voz. El sistema permite a los usuarios grabar o subir una muestra de voz sostenida, extraer automáticamente **22 biomarcadores acústicos** (F0, jitter, shimmer, HNR, NHR, y parámetros no lineales como DFA, D2, RPDE, PPE), y obtener una **predicción preliminar basada en machine learning**.
 
 El sistema fue construido utilizando **FastAPI, Next.js y Python**, integrando modelos de Machine Learning entrenados con datos medicos. La idea principal es proporcionar una herramienta que ayude a identificar tempranamente posibles problemas de salud.
-
----
-
-## Actualización Arquitectura 2.0 (Audio Parkinson)
-
-Durante la iteración reciente se realizaron cambios para alinear el proyecto con la evolución arquitectónica de MedDiag2 enfocada en biomarcadores de voz.
-
-### Cambios técnicos implementados
-
-- **Extractor Parselmouth-first en el pipeline principal**: el flujo de `POST /audio/{id}/process` ahora prioriza Parselmouth para biomarcadores clínicos clave y usa extracción de soporte como fallback.
-- **Bloqueo de inferencia con features incompletas**: se formalizó el estado de respuesta `partial_features` para evitar predicciones con vector inválido o no finito.
-- **Mejor trazabilidad de extracción**: se persisten señales de validación de features en `notes` del audio procesado.
-- **Prueba de calidad por usuario antes de extracción**: en la pantalla de Parkinson se añadió previsualización de la grabación con botón de reproducir antes de iniciar extracción/subida.
-
-### Documentos de investigación y justificación
-
-- Investigación técnica base de biomarcadores y librerías: [INVESTIGACION_BIOMARCADORES_VOZ_PARKINSON.markdown.md](/home/aetaller2/Documentos/proyectos/MedDiag2/INVESTIGACION_BIOMARCADORES_VOZ_PARKINSON.markdown.md)
-- Guía arquitectónica objetivo 2.0 y roadmap: [GUIA_ARQUITECTURA_MEDDIAG2_2.0.md](/home/aetaller2/Documentos/proyectos/MedDiag2/GUIA_ARQUITECTURA_MEDDIAG2_2.0.md)
 
 ---
 
@@ -48,6 +31,9 @@ Desarrollar un sistema de apoyo diagnostico basado en inteligencia artificial qu
 
 ---
 
+## Tecnologías Utilizadas
+
+| Tecnología | Versión | Para qué se usa |
 |-----------|---------|--------------------|
 | **Python** | 3.10+ | Lenguaje principal de programación |
 | **Next.js** | 13+ | Para crear la interfaz web |
@@ -80,7 +66,6 @@ MedDiag implementa tres modelos de clasificación binaria especializados en la p
 #### 2. **Predictor de Enfermedades Cardiovasculares**
 - **Archivo del modelo:** `heart_disease_model.sav`
 - **Características de entrada:** 13 variables clínicas
-Si vas a correr el proyecto en local en Linux, asegúrate también de tener `node` y `npm` instalados para el frontend.
   - Edad, Sexo, Tipo de dolor en el pecho
   - Presión arterial, Colesterol sérico
   - Glucosa en ayunas, Resultados ECG
@@ -157,6 +142,7 @@ El proceso de entrenamiento de cada modelo sigue estos pasos:
    └─ Imputación de valores faltantes (media/mediana)
    └─ Feature Scaling (StandardScaler)
    └─ Tratamiento de desbalance de clases (SMOTE)
+
 3. DIVISIÓN DE DATOS
    └─ Train: 70% (2,457 samples en total)
    └─ Validation: 15% (525 samples)
@@ -179,18 +165,23 @@ El proceso de entrenamiento de cada modelo sigue estos pasos:
 
 ---
 
-### 📈 Algoritmos y Rendimiento
+## Biomarcadores Extraídos
 
-Los modelos fueron entrenados y comparados con múltiples algoritmos:
+El sistema extrae **22 variables** que componen el vector clásico del dataset de Parkinson:
 
-| Algoritmo | Ventajas | Desempeño Típico |
-|---|---|---|
-| **Random Forest** | Robusto, maneja features mixtas, buena generalización | 92-99% Accuracy |
-| **Support Vector Machine (SVM)** | Excelente en espacios altos, funciones kernel flexibles | 85-95% Accuracy |
-| **Logistic Regression** | Interpretable, rápido, probabilidades calibradas | 78-90% Accuracy |
-| **XGBoost** | Muy poderoso, maneja desbalance, high-performance | 90-99% Accuracy |
+| Categoría | Variables |
+|-----------|-----------|
+| **Frecuencia** | MDVP:Fo(Hz), MDVP:Fhi(Hz), MDVP:Flo(Hz) |
+| **Jitter** | MDVP:Jitter(%), MDVP:Jitter(Abs), MDVP:RAP, MDVP:PPQ, Jitter:DDP |
+| **Shimmer** | MDVP:Shimmer, MDVP:Shimmer(dB), Shimmer:APQ3, Shimmer:APQ5, MDVP:APQ, Shimmer:DDA |
+| **Ruido** | NHR, HNR |
+| **No lineales** | RPDE, DFA, spread1, spread2, D2, PPE |
 
-**Modelo Final Seleccionado:** Para cada enfermedad se seleccionó el algoritmo con mejor balance entre accuracy, interpretabilidad y velocidad de predicción.
+La extracción usa una estrategia híbrida:
+- **Librosa** para carga, preprocesamiento y pitch (ruta principal)
+- **Parselmouth/Praat** como alternativa para F0
+- **Implementaciones determinísticas propias** para biomarcadores no lineales (rama `marcadoresNL`)
+- **Aproximación cepstral** para NHR/HNR
 
 ---
 
@@ -206,124 +197,55 @@ Cada modelo es evaluado con métricas clínico-médicas:
 | **F1-Score** | Media armónica P-R | Balance Precision-Recall |
 | **AUC-ROC** | Area bajo curva ROC | Capacidad discriminativa |
 
+**Nota Clínica:** En diagnóstico médico se prioriza Recall/Sensitivity para no perder casos positivos, aunque implique más falsos positivos que son revisados clínicamente.
 
 ---
 
-### ✅ Resultados del Entrenamiento
+## Tecnologías
 
-| Enfermedad | Accuracy | Precision | Recall | F1-Score | AUC-ROC |
-|---|---|---|---|---|---|
-| Diabetes Tipo 2 | 78.5% | 74% | 68% | 71% | 0.84 |
-| Enfermedades Cardíacas | 85.1% | 87% | 82% | 84% | 0.90 |
-| Enfermedad de Parkinson | 88.3% | 90% | 86% | 88% | 0.93 |
-
-**Interpretación:**
-- Los modelos demuestran capacidad predictiva clinicamente relevante
-- Recall >80% indica bajo riesgo de falsos negativos
-- AUC-ROC >0.84 indica discriminación efectiva entre casos
+| Tecnología | Versión | Propósito |
+|-----------|---------|-----------|
+| **Python** | 3.10+ | Lenguaje principal del backend |
+| **FastAPI** | Latest | Backend REST API |
+| **Next.js** | 13+ | Frontend web |
+| **scikit-learn** | 1.3+ | Modelos ML |
+| **Librosa** | Latest | Procesamiento digital de audio |
+| **Parselmouth (Praat)** | Latest | Análisis acústico de voz |
+| **SciPy** | 1.7+ | Señales y matemáticas |
+| **SQLite / PostgreSQL** | — | Base de datos |
+| **Alembic** | — | Migraciones de base de datos |
+| **Docker** | — | Contenedores |
 
 ---
 
-### 🔄 Reproducibilidad Científica
+## Instalación y Ejecución
 
-Todos los modelos son **reproducibles y auditables**:
+### Prerrequisitos
+- Python 3.10+
+- npm / Node.js
+- Git
 
-✅ Datasets públicos del UCI Machine Learning Repository
-✅ Código de entrenamiento en Jupyter notebooks
-✅ Modelos serializados en formato estándar (.sav)
-✅ Parámetros de entrenamiento documentados
-✅ Validación cruzada para garantizar generalización
-
-Para reentrenar los modelos:
+### 1. Clonar el repositorio
 ```bash
-cd notebooks
-jupyter notebook 01_train.ipynb
+git clone https://github.com/admaesmo/MedDiag2.git
+cd MedDiag2
 ```
 
----
-
-### ⚠️ Limitaciones y Consideraciones
-
-- **No es diagnóstico clínico:** MedDiag es un sistema de apoyo, **nunca reemplaza** la evaluación médica profesional
-- **Datos históricos:** Los datasets reflejan poblaciones específicas; puede haber variación en otras poblaciones
-- **Desempeño variable:** La precisión depende de la calidad y completitud de los datos ingresados
-- **Validación continua:** Se requiere validación clínica regular con nuevos datos
-
----
-
-## Estructura del Proyecto
-
-```
-MedDiag/
-  app/
-    main.py               # Backend FastAPI (REST y persistencia)
-    model_predict.py      # Carga y ejecucion de modelos ML
-    models.py             # Modelos SQLAlchemy
-    utils/
-      crud.py             # Operaciones de base de datos
-      database.py         # Configuracion de la base de datos
-      validators.py       # Validaciones basicas
-
-  frontend/web/           # Frontend web en Next.js
-
-  saved_models/           # Modelos entrenados (.sav)
-  notebooks/              # Notebooks de entrenamiento
-  render.yaml             # Despliegue en Render para la API
-  Dockerfile              # Imagen del backend
-  requirements.txt        # Dependencias del proyecto
-  .env.example            # Variables de entorno ejemplo
-  README.md
-```
-
-Para instrucciones de despliegue en Render consulta `DEPLOY.md`.
-
----
-
-## Como Instalar y Ejecutar
-
-### Antes de Comenzar
-
-Necesitas tener instalado en tu computadora:
-- Python version 3.10 o superior
-- pip (para instalar las librerias)
-- Git (para clonar el repositorio)
-
-### Paso 1: Clonar el Repositorio
-
-Abre la terminal y ejecuta:
-
+### 2. Entorno virtual
 ```bash
-git clone https://github.com/CarlosCastano33/MedDiag.git
-cd MedDiag
-```
-
-### Paso 2: Crear un Entorno Virtual
-
-Es importante crear un entorno virtual para no mezclar las librerias del proyecto con las del sistema.
-
-```bash
-# Si usas Linux o macOS
 python -m venv venv
-source venv/bin/activate
-
-# Si usas Windows
-python -m venv venv
-venv\Scripts\activate
+source venv/bin/activate  # Linux/Mac
+# o: venv\Scripts\activate  # Windows
 ```
 
-### Paso 3: Instalar las Dependencias
-
-Instala todas las librerias que el proyecto necesita:
-
+### 3. Instalar dependencias backend
 ```bash
 pip install -r requirements.txt
 ```
 
-### Paso 4: Crear variables de entorno locales
-
-Backend (`.env` en la raiz del repo):
-
-```bash
+### 4. Variables de entorno
+Crear `.env` en la raíz:
+```env
 DATABASE_URL=sqlite:///./meddiag.local.db
 MODEL_DIR=./saved_models
 ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
@@ -360,54 +282,6 @@ y levanta la base con:
 docker compose up -d db
 ```
 
-### Script completo para correr en local después de clonar
-
-Si quieres ejecutar backend y frontend con una sola secuencia, usa este flujo desde la raiz del repositorio:
-
-```bash
-# 1) Crear y activar el entorno virtual
-python3 -m venv .venv
-source .venv/bin/activate
-
-# 2) Instalar dependencias del backend
-pip install -r requirements.txt
-
-# 3) Crear variables de entorno del backend
-cat > .env <<'EOF'
-DATABASE_URL=sqlite:///./meddiag.local.db
-MODEL_DIR=./saved_models
-ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-AUTH_PROVIDER=local
-JWT_SECRET_KEY=dev-secret-change-me
-JWT_ALGORITHM=HS256
-JWT_EXPIRATION_MINUTES=60
-STORAGE_PROVIDER=local
-STORAGE_LOCAL_PATH=./storage/audio
-MAX_AUDIO_FILE_SIZE_MB=25
-EOF
-
-# 4) Crear variables de entorno del frontend
-cat > frontend/web/.env.local <<'EOF'
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
-NEXT_PUBLIC_USE_MOCK_API=false
-NEXT_PUBLIC_AUTH_MODE=local
-NEXT_PUBLIC_LOCAL_AUTH_EMAIL=demo@meddiag.local
-NEXT_PUBLIC_LOCAL_AUTH_PASSWORD=meddiag123
-NEXT_PUBLIC_LOCAL_AUTH_ROLE=patient
-NEXT_PUBLIC_LOCAL_AUTH_DISPLAY_NAME=Demo Local
-EOF
-
-# 5) Instalar dependencias del frontend
-cd frontend/web
-npm install
-
-# 6) Volver a la raiz y levantar todo
-cd ../..
-./scripts/start-local.sh
-```
-
-Si tu sistema no tiene `python3-venv`, `pip`, `node` o `npm`, instala esos paquetes antes de ejecutar el script.
-
 ### Paso 5: Ejecutar la Aplicacion
 
 Si quieres levantar todo con un solo comando:
@@ -434,185 +308,119 @@ Y para detenerlo:
 
 ```bash
 cd frontend/web
+cp .env.local.example .env.local  # Ajustar si es necesario
 npm install
-npm run dev
+cd ../..
 ```
 
-La aplicación se abrira en tu navegador en: `http://localhost:3000`
-
-#### Opcion 2: Con Backend FastAPI (Si quieres probar el backend también)
-
-En una primera terminal ejecuta:
+### 6. Iniciar
 ```bash
+# Opción 1: Script automatizado
+./scripts/start-local.sh
+
+# Opción 2: Manual (dos terminales)
+# Terminal 1:
 python -m uvicorn app.main:app --reload
+# Terminal 2:
+cd frontend/web && npm run dev
 ```
 
-En otra terminal ejecuta:
-```bash
-cd frontend/web
-npm install
-npm run dev
-```
+### 7. Acceder
+- **Frontend:** http://localhost:3000
+- **Backend API:** http://127.0.0.1:8000
+- **Documentación API (Swagger):** http://127.0.0.1:8000/docs
 
-#### Endpoint MVP de biomarcadores de voz
-
-El backend expone un endpoint ligero para analizar audio de voz sin persistirlo:
-
+### Endpoint rápido de biomarcadores
 ```bash
 POST /audio/biomarkers/extract
 ```
+Recibe un audio por `multipart/form-data` y retorna las 22 features más la inferencia del modelo de Parkinson. No persiste el audio.
 
-Recibe un archivo de audio por `multipart/form-data`, lo normaliza a mono, `16 kHz` y `WAV` temporal, y retorna:
+---
 
-- `pitch_mean`
-- `pitch_min`
-- `pitch_max`
-- `jitter_local`
-- `shimmer_local`
-- `hnr_mean`
-- `parkinson_model_bridge` con el mapeo parcial de esos biomarcadores al modelo actual
-- `parkinson_model_input` con el vector completo de `22` features que exige el modelo de Parkinson actual
-- `parkinson_inference` con la prediccion directa calculada sobre ese vector completo
+## Estructura del Proyecto
 
-Ejemplo con `curl`:
-
-```bash
-curl -X POST http://127.0.0.1:8000/audio/biomarkers/extract ^
-  -F "file=@ruta\\a\\tu_audio.wav;type=audio/wav"
+```
+MedDiag2/
+├── app/                          # Backend FastAPI
+│   ├── main.py                   # Punto de entrada
+│   ├── model_predict.py          # Carga y ejecución de modelos ML
+│   ├── models.py                 # Modelos SQLAlchemy
+│   ├── api/                      # Endpoints REST
+│   │   ├── audio.py              # Endpoints de audio
+│   │   ├── auth.py               # Autenticación
+│   │   └── voice_biomarkers.py   # Biomarcadores de voz
+│   ├── schemas/                  # Schemas Pydantic
+│   ├── services/                 # Lógica de negocio
+│   │   ├── audio_pipeline.py     # Pipeline completo de audio
+│   │   ├── audio_processing.py   # Procesamiento de señales
+│   │   ├── audio_service.py      # Servicio de audio
+│   │   ├── nonlinear_features.py # Biomarcadores no lineales
+│   │   └── voice_biomarkers.py   # Extracción de biomarcadores
+│   └── utils/                    # Utilidades
+├── frontend/web/                 # Frontend Next.js
+│   ├── app/                      # App Router
+│   ├── components/               # Componentes (Atomic Design)
+│   ├── features/                 # Hooks y mutaciones por feature
+│   ├── lib/                      # Utilidades y configuración
+│   │   └── i18n/                 # Internacionalización (EN, ES, PT-BR)
+│   └── stores/                   # Estado global (Zustand)
+├── Documentacion/                # Documentación del proyecto
+│   ├── MedDiag2_paper_corregido.md           # Paper académico (vigente)
+│   ├── Justificación de la ruta actual....md # ⛔ Deprecado
+│   └── INVESTIGACION_BIOMARCADORES_VOZ_...md # Investigación técnica
+├── saved_models/                 # Modelos serializados (.sav)
+├── scripts/                      # Scripts de inicio/parada
+├── alembic/                      # Migraciones de base de datos
+├── DEPLOY.md                     # Guía de despliegue
+├── requirements.txt              # Dependencias Python
+├── Dockerfile                    # Imagen Docker del backend
+└── render.yaml                   # Blueprint de Render
 ```
 
-El flujo nuevo ya puede alimentar directamente al modelo actual porque reutiliza el extractor completo de features del pipeline de audio sobre el mismo WAV normalizado. La persistencia del audio y el pipeline viejo siguen existiendo aparte para historial y procesamiento en segundo plano.
+---
+
+## Documentación
+
+| Documento | Descripción |
+|-----------|-------------|
+| [`MedDiag2_paper_corregido.md`](./Documentacion/MedDiag2_paper_corregido.md) | Paper académico completo con metodología, resultados y discusión |
+| [`INVESTIGACION_BIOMARCADORES_VOZ_PARKINSON.markdown.md`](./Documentacion/INVESTIGACION_BIOMARCADORES_VOZ_PARKINSON.markdown.md) | Investigación técnica sobre biomarcadores y librerías |
+| [`DEPLOY.md`](./DEPLOY.md) | Guía de despliegue en Render + Vercel |
+| [`frontend/web/README.md`](./frontend/web/README.md) | Documentación del frontend |
+| API Docs | Swagger en `/docs` (servidor corriendo) |
 
 ---
 
-## Que Puede Hacer la Aplicacion
+## Limitaciones
 
-### 1. Ingresar Sintomas
-
-El usuario puede seleccionar los sintomas que tiene, su edad, sexo y otros datos importantes. La aplicación valida que todos los datos sean correctos antes de procesar.
-
-### 2. Predecir Posibles Diagnosticos
-
-Una vez que ingresas los datos, el sistema utiliza los modelos de Machine Learning para analizar la información y predecir que enfermedades podrias tener. Da una probabilidad para cada enfermedad.
-
-### 3. Ver Informacion sobre las Enfermedades
-
-La aplicación muestra informacion educativa sobre los diagnosticos predichos, para que entiendas mejor que son esas enfermedades y cuales son sus síntomas.
-
-### 4. Interfaz Facil de Usar
-
-El diseño de la aplicación es simple y funciona tanto en computadoras como en celulares. Los resultados se muestran de forma clara y con graficos.
+1. **No es diagnóstico clínico** — Solo entrega una proyección preliminar experimental.
+2. **Dataset limitado** — Modelo basado en dataset público pequeño (197 muestras, 31 personas).
+3. **Sensibilidad al audio** — Ruido, micrófono, distancia e intensidad afectan los biomarcadores.
+4. **Aproximaciones algorítmicas** — Varias medidas son aproximaciones propias, no equivalentes exactos de MDVP o Praat.
+5. **Valores `0.0` como placeholder** — Cuando una feature no puede calcularse, se usa `0.0` por compatibilidad. Esto debe reemplazarse por una política formal de features parciales.
+6. **Sin validación clínica** — No se ha evaluado con pacientes reales ni profesionales médicos.
+7. **Riesgo de sobreinterpretación** — Una probabilidad puede malentenderse sin el contexto y advertencias adecuadas.
 
 ---
 
-## Estado Actual del Proyecto
+## Trabajo Futuro
 
-Esta es la situación de cada parte del proyecto:
-
-| Parte del Proyecto | Estado | Comentario |
-|------------------|--------|-----------| 
-| Ingreso de sintomas | ✅ Terminado | Funciona correctamente |
-| Modelos de predicción | ✅ Terminado | Los 3 modelos estan entrenados |
-| Base de datos | ✅ Terminado | Guardamos los registros localmente |
-| Visualizacion de resultados | ✅ Terminado | Se muestran bien los resultados |
-| Validacion medica | ⏳ En progreso | Aun se puede mejorar mas |
-
----
-
-## Como Reentrenar el Modelo
-
-Si quieres entrenar nuevamente el modelo con otros datos, puedes usar el archivo Jupyter. Consulta la sección "📊 Modelos de Machine Learning y Datasets" para más detalles, luego abre la terminal y ejecuta:
-
-```bash
-cd notebooks
-jupyter notebook 01_train.ipynb
-```
-
-Despues de entrenar, los nuevos modelos se guardaran automaticamente en la carpeta `saved_models/`.
-
----
-
-## Metodologia que Usamos
-
-Desarrollamos MedDiag siguiendo un enfoque **Agil**, esto significa que hicimos el proyecto en varias etapas pequeñas:
-
-1. **Planeacion:** Definimos que queriamos lograr
-2. **Diseño:** Pensamos en como guardar y procesar los datos
-3. **Desarrollo de Modelos:** Entrenamos los modelos de Machine Learning
-4. **Implementacion:** Construimos la interfaz y el backend
-5. **Pruebas:** Verificamos que todo funcionara correctamente
-6. **Documentacion:** Escribimos todo lo que aprendimos
-
----
-
-## Problemas Encontrados y Posibles Mejoras
-
-### Problemas Actuales
-
-1. **Los modelos no son perfectos** - Podrían funcionar mejor si tuvieramos más datos para entrenar
-2. **Solo detectamos 3 enfermedades** - Queremos agregar más tipos de diagnosticos en el futuro
-3. **No tenemos validacion de doctores** - Un medico profesional deberia revisar nuestros resultados
-4. **No es muy escalable** - El proyecto actual es pequeño, pero si crece va a necesitar ser reorganizado
-
-### Ideas para Mejorar en el Futuro
-
-- Agregar mas enfermedades que el sistema pueda predecir
-- Usar modelos mas avanzados con redes neuronales profundas
-- Desplegar la aplicacion en la nube (AWS, Google Cloud)
-- Validar los resultados con hospitales y clinicas reales
-- Crear una aplicacion movil para celulares
-- Agregar seguridad para proteger los datos de los usuarios
-
----
-
-## El Equipo que Desarrollo MedDiag
-
-Este proyecto fue realizado por estudiantes de Ingenieria de Sistemas como trabajo del curso **Proyecto Integrador**:
-
-- **Adrian Espinosa** - Desarrollador Backend
-- **Carlos Castaño** - Desarrollador Frontend
-- **Diana Huertas** - Especialista en Machine Learning
-
-**Docente Asesor:** Sandra Patricia Zabala Orrego
-
----
-
-## Referencias que Consultamos
-
-Estas fueron algunas de las fuentes que consultamos para aprender:
-
-1. Documentacion de Next.js: https://nextjs.org/docs
-2. Documentacion de FastAPI: https://fastapi.tiangolo.com/
-3. Documentacion de scikit-learn: https://scikit-learn.org/
-4. Documentacion de Pandas: https://pandas.pydata.org/
-5. Documentacion de NumPy: https://numpy.org/
+- [ ] Congelar extractor clásico con Parselmouth/Praat para F0, jitter, shimmer y HNR
+- [ ] Implementar servicio formal de control de calidad de audio
+- [ ] Reemplazar uso de `0.0` por política `partial_features` o `missing_features`
+- [ ] Diseñar pruebas con 3 repeticiones por persona, vocal `/a/` de 3-5s
+- [ ] Comparar Parselmouth vs openSMILE y DisVoice
+- [ ] Evaluar modelos: Random Forest, SVM, Logistic Regression, XGBoost
+- [ ] Reentrenar modelo solo con features del pipeline definitivo
+- [ ] Explorar embeddings profundos (Wav2Vec2, HuBERT, WavLM) con banco de audios suficiente
 
 ---
 
 ## Licencia
 
-Este proyecto esta bajo la licencia MIT, esto significa que puedes usarlo libremente, pero debes darle credito a los autores.
+MIT © 2025-2026 — Proyecto Integrador — Ingeniería de Sistemas
 
----
-
-## Como Contribuir
-
-Si quieres ayudar a mejorar MedDiag, puedes:
-
-1. Hacer un Fork del repositorio
-2. Crear una rama nueva con tu nombre: `git checkout -b feature/tuNombre`
-3. Hacer cambios y commit: `git commit -m "Descripcion de lo que cambiaste"`
-4. Hacer push: `git push origin feature/tuNombre`
-5. Abrir un Pull Request
-
----
-
-## Notas Finales
-
-MedDiag es un proyecto educativo que demuestra como podemos usar Inteligencia Artificial para ayudar en el area de la salud. Aunque funciona bien para un MVP, es importante recordar que **no debe reemplazar** la opinion de un medico profesional.
-
-Aprendimos mucho durante este proyecto, desde como funcionan los modelos de Machine Learning, hasta como construir una aplicacion web completa con FastAPI y Next.js.
-
-**© 2025 - Proyecto Integrador - Ingenieria de Sistemas**
-
-*Medellín, Colombia*
+**Autores:** Adrián Espinosa, Diana Huertas, David Ríos  
+**Docente asesor:** Sandra Patricia Zabala Orrego  
+**Universidad:** [Institución] — Medellín, Colombia

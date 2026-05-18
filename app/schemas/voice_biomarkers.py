@@ -1,5 +1,5 @@
 """
-Schemas for the lightweight voice biomarker extraction endpoint.
+Schemas para el endpoint ligero de extracción de biomarcadores de voz.
 """
 
 from __future__ import annotations
@@ -10,12 +10,15 @@ from pydantic import BaseModel, Field
 
 
 class VoiceBiomarkerSet(BaseModel):
-    pitch_mean: float = Field(..., description="Mean voiced pitch in Hz.")
-    pitch_min: float = Field(..., description="Minimum voiced pitch in Hz.")
-    pitch_max: float = Field(..., description="Maximum voiced pitch in Hz.")
-    jitter_local: float = Field(..., description="Parselmouth local jitter.")
-    shimmer_local: float = Field(..., description="Parselmouth local shimmer.")
-    hnr_mean: float = Field(..., description="Mean harmonics-to-noise ratio from Parselmouth.")
+    pitch_mean: float = Field(..., description="Pitch sonoro medio en Hz.")
+    pitch_min: float = Field(..., description="Pitch sonoro mínimo en Hz.")
+    pitch_max: float = Field(..., description="Pitch sonoro máximo en Hz.")
+    jitter_local: float = Field(..., description="Jitter local calculado con Parselmouth.")
+    shimmer_local: float = Field(..., description="Shimmer local calculado con Parselmouth.")
+    hnr_mean: float = Field(
+        ...,
+        description="Relación media armónicos-ruido calculada con Parselmouth.",
+    )
 
 
 class VoiceBiomarkerAudioMetadata(BaseModel):

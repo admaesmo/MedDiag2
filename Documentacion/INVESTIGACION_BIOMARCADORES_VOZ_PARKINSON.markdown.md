@@ -1,5 +1,9 @@
 # Investigación Base para Extracción de Biomarcadores de Voz en Parkinson
 
+Trazabilidad del proyecto y hoja de evolución técnica:
+> ⚠️ El archivo `HISTORIA_TECNICA_BIOMARCADORES_MEDDIAG2.md` no está presente en este repositorio.  
+> Ver `Documentacion/MedDiag2_paper_corregido.md` para la evolución documentada del proyecto.
+
 ## 1. Propósito del documento
 
 Este documento resume los hallazgos técnicos del estado actual del proyecto MedDiag en la rama `mejoras-audio`, con el fin de servir como insumo para:
@@ -15,11 +19,11 @@ El foco principal es la detección de biomarcadores de Parkinson a partir de voz
 
 ## 2. Estado actual del proyecto
 
-El pipeline actual se apoya principalmente en [app/services/audio_processing.py](/home/aetaller/Documentos/proyectos/MedDiag2-mejoras-audio/app/services/audio_processing.py) y [app/services/audio_pipeline.py](/home/aetaller/Documentos/proyectos/MedDiag2-mejoras-audio/app/services/audio_pipeline.py).
+El pipeline actual se apoya principalmente en [`app/services/audio_processing.py`](../app/services/audio_processing.py) y [`app/services/audio_pipeline.py`](../app/services/audio_pipeline.py).
 
 ### 2.1 Librerías ya presentes en la rama
 
-Según [requirements.txt](/home/aetaller/Documentos/proyectos/MedDiag2-mejoras-audio/requirements.txt), las librerías relevantes para audio y biomarcadores son:
+Según [`requirements.txt`](../requirements.txt), las librerías relevantes para audio y biomarcadores son:
 
 - `numpy`
 - `scipy`

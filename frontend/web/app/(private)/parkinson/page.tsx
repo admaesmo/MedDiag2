@@ -60,9 +60,6 @@ export default function ParkinsonPage() {
   const [biomarkerMessage, setBiomarkerMessage] = useState<string | null>(null);
   const [biomarkerError, setBiomarkerError] = useState<string | null>(null);
   const [biomarkerResponse, setBiomarkerResponse] = useState<VoiceBiomarkerExtractionResponse | null>(null);
-  const [pendingAudioBlob, setPendingAudioBlob] = useState<Blob | null>(null);
-  const [pendingAudioFileName, setPendingAudioFileName] = useState<string | null>(null);
-  const [pendingAudioPreviewUrl, setPendingAudioPreviewUrl] = useState<string | null>(null);
   const [consentError, setConsentError] = useState<string | null>(null);
   const [checks, setChecks] = useState({
     data: false,
@@ -78,7 +75,6 @@ export default function ParkinsonPage() {
   const [jsonEditorMessage, setJsonEditorMessage] = useState<string | null>(null);
   const [jsonEditorError, setJsonEditorError] = useState<string | null>(null);
   const firstConsentRef = useRef<HTMLInputElement>(null);
-  const pendingAudioRef = useRef<HTMLAudioElement>(null);
   const { accessToken, email } = useSessionState();
   const recording = useAudioRecording();
   const prediction = useParkinsonPrediction(accessToken, email);
@@ -161,14 +157,6 @@ export default function ParkinsonPage() {
     }
   }, [isConsentOpen]);
 
-  useEffect(() => {
-    return () => {
-      if (pendingAudioPreviewUrl) {
-        URL.revokeObjectURL(pendingAudioPreviewUrl);
-      }
-    };
-  }, [pendingAudioPreviewUrl]);
-
   const canProceed = checks.data && checks.validation && checks.service;
 
   const updateFeatureValue = (key: EditableFeatureKey, value: string) => {
@@ -239,12 +227,6 @@ export default function ParkinsonPage() {
       setBiomarkerMessage(null);
       setBiomarkerError(null);
       setBiomarkerResponse(null);
-      if (pendingAudioPreviewUrl) {
-        URL.revokeObjectURL(pendingAudioPreviewUrl);
-      }
-      setPendingAudioBlob(null);
-      setPendingAudioFileName(null);
-      setPendingAudioPreviewUrl(null);
       prediction.reset();
       recording.resetRecording();
       await recording.startRecording();
@@ -270,44 +252,11 @@ export default function ParkinsonPage() {
         : audioBlob.type.includes("ogg")
           ? "ogg"
           : "wav";
-    const captureFileName = `parkinson-sample.${extension}`;
-
-    if (pendingAudioPreviewUrl) {
-      URL.revokeObjectURL(pendingAudioPreviewUrl);
-    }
-    setPendingAudioBlob(audioBlob);
-    setPendingAudioFileName(captureFileName);
-    setPendingAudioPreviewUrl(URL.createObjectURL(audioBlob));
-    setAudioUploadMessage("Grabación lista. Reprodúcela y luego procesa la extracción.");
-  };
-
-  const handlePlayPendingAudio = async () => {
-    if (!pendingAudioRef.current) {
-      return;
-    }
-    try {
-      pendingAudioRef.current.currentTime = 0;
-      await pendingAudioRef.current.play();
-    } catch {
-      setAudioUploadError("No se pudo reproducir la grabación en este navegador.");
-    }
-  };
-
-  const handleProcessPendingAudio = async () => {
-    if (!pendingAudioBlob || !pendingAudioFileName) {
-      setAudioUploadError("No hay grabación lista para procesar.");
-      return;
-    }
-
-    setBiomarkerError(null);
-    setBiomarkerMessage(null);
-    setAudioUploadError(null);
-    setAudioUploadMessage(null);
-    prediction.reset();
+    const uploadFileName = `parkinson-sample.${extension}`;
 
     try {
       setIsExtractingBiomarkers(true);
-      const biomarkers = await extractVoiceBiomarkersMultipart(pendingAudioBlob, pendingAudioFileName);
+      const biomarkers = await extractVoiceBiomarkersMultipart(audioBlob, uploadFileName);
       setBiomarkerResponse(biomarkers);
       setBiomarkerMessage(t(locale, "parkinson", "biomarkerSuccess"));
     } catch (error) {
@@ -328,7 +277,7 @@ export default function ParkinsonPage() {
     try {
       setIsUploadingAudio(true);
 
-      const response = await uploadAudioMultipart(accessToken ?? "", pendingAudioBlob, pendingAudioFileName, {
+      const response = await uploadAudioMultipart(accessToken ?? "", audioBlob, uploadFileName, {
         sourceType: "microphone",
         languageCode: locale.split("-")[0],
       });
@@ -468,7 +417,13 @@ export default function ParkinsonPage() {
               disabled={isConsentOpen || isUploadingAudio || isExtractingBiomarkers}
             >
               <Play className="mr-2 h-4 w-4" />
-              {recording.isRecording ? t(locale, "parkinson", "stop") : t(locale, "parkinson", "start")}
+              {isExtractingBiomarkers
+                ? t(locale, "parkinson", "extractingBiomarkers")
+                : isUploadingAudio
+                ? t(locale, "parkinson", "uploading")
+                : recording.isRecording
+                  ? t(locale, "parkinson", "stop")
+                  : t(locale, "parkinson", "start")}
             </Button>
             <Button
               variant="secondary"
@@ -483,37 +438,6 @@ export default function ParkinsonPage() {
                   : t(locale, "parkinson", "runInference")}
             </Button>
           </div>
-
-          {pendingAudioBlob && !recording.isRecording ? (
-            <div className="mt-4 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-left">
-              <p className="text-sm font-semibold text-foreground">Previsualización de grabación</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Reproduce la muestra para verificar calidad antes de iniciar extracción.
-              </p>
-              <audio ref={pendingAudioRef} src={pendingAudioPreviewUrl ?? undefined} className="mt-3 w-full" controls />
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handlePlayPendingAudio}
-                  disabled={isUploadingAudio || isExtractingBiomarkers}
-                >
-                  Reproducir grabación
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleProcessPendingAudio}
-                  disabled={isUploadingAudio || isExtractingBiomarkers}
-                >
-                  {isExtractingBiomarkers
-                    ? t(locale, "parkinson", "extractingBiomarkers")
-                    : isUploadingAudio
-                      ? t(locale, "parkinson", "uploading")
-                      : "Iniciar extracción"}
-                </Button>
-              </div>
-            </div>
-          ) : null}
 
           {!mockApiEnabled && latestAudio ? (
             <p className="mt-2 text-xs text-muted-foreground" role="status" aria-live="polite">

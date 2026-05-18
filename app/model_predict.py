@@ -11,7 +11,7 @@ load_dotenv()
 WORKING_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.getenv("MODEL_DIR", os.path.join(os.path.dirname(WORKING_DIR), "saved_models"))
 
-# Feature orders used for inference
+# Orden de características usado para inferencia.
 DIABETES_FEATURE_ORDER = [
     "Pregnancies",
     "Glucose",
@@ -53,43 +53,29 @@ def _load_model(filename: str):
         return pickle.load(f)
 
 
-# Load models once per process
+# Cargar modelos una sola vez por proceso.
 diabetes_model = _load_model("diabetes_model.sav")
 heart_model = _load_model("heart_disease_model.sav")
 parkinsons_model = _load_model("parkinsons_model.sav")
 
 
 def _predict_binary(model, ordered_features: List[str], features: Dict[str, float]) -> Tuple[int, float]:
-    """Return predicted class and probability (best effort if no predict_proba)."""
+    """Devuelve clase predicha y probabilidad, con respaldo si no existe predict_proba."""
     x = np.array([[float(features[f]) for f in ordered_features]])
 
     if hasattr(model, "predict_proba"):
         proba = float(model.predict_proba(x)[0][1])
     else:
         pred = model.predict(x)[0]
-        # fallback probability when model has no predict_proba
+        # Probabilidad de respaldo cuando el modelo no expone predict_proba.
         proba = 1.0 if pred == 1 else 0.0
     label = int(model.predict(x)[0])
     return label, proba
 
-#def _predict_binary(model, ordered_features: List[str], features: Dict[str, float]) -> Tuple[int, float]:
-    """Return predicted class and probability (best effort if no predict_proba)."""
-    x = np.array([[float(features[f]) for f in ordered_features]])
 
-    supports_proba = hasattr(model, "predict_proba") and bool(getattr(model, "probability", True))
-    if supports_proba:
-        try:
-            proba = float(model.predict_proba(x)[0][1])
-        except Exception:
-            pred = model.predict(x)[0]
-            # fallback probability when predict_proba is not usable at runtime
-            proba = 1.0 if pred == 1 else 0.0
-    else:
-        pred = model.predict(x)[0]
-        # fallback probability when model has no predict_proba
-        proba = 1.0 if pred == 1 else 0.0
-    label = int(model.predict(x)[0])
-    return label, proba
+# NOTA: predict_diabetes y predict_heart se mantienen por compatibilidad
+#       externa, pero la pipeline activa solo usa predict_parkinson.
+
 
 def predict_diabetes(features: Dict[str, float]) -> Tuple[int, float]:
     return _predict_binary(diabetes_model, DIABETES_FEATURE_ORDER, features)
