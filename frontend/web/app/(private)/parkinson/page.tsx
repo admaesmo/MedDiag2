@@ -51,8 +51,7 @@ export default function ParkinsonPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const locale = useUiStore((state) => state.locale);
-  const consentAccepted = useUiStore((state) => state.parkinsonConsentAccepted);
-  const setConsentAccepted = useUiStore((state) => state.setParkinsonConsentAccepted);
+  const [consentAccepted, setConsentAccepted] = useState(false);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isExtractingBiomarkers, setIsExtractingBiomarkers] = useState(false);
   const [audioUploadMessage, setAudioUploadMessage] = useState<string | null>(null);
