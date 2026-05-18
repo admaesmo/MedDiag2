@@ -490,50 +490,54 @@ export default function ParkinsonPage() {
             ))}
           </div>
 
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <Button
-              size="lg"
-              onClick={handleRecordButtonClick}
-              disabled={isConsentOpen || isUploadingAudio || isExtractingBiomarkers || isUploadingFile}
-            >
-              <Play className="mr-2 h-4 w-4" />
-              {isExtractingBiomarkers
-                ? t(locale, "parkinson", "extractingBiomarkers")
-                : isUploadingAudio
-                ? t(locale, "parkinson", "uploading")
-                : recording.isRecording
-                  ? t(locale, "parkinson", "stop")
-                  : t(locale, "parkinson", "start")}
-            </Button>
-            <Button
-              variant="secondary"
-              size="lg"
-              onClick={handleInferenceClick}
-              disabled={!canRunInference || prediction.isPending || isConsentOpen}
-            >
-              {prediction.isPending
-                ? t(locale, "parkinson", "processing")
-                : isAudioProcessing
-                  ? t(locale, "parkinson", "audioProcessing")
-                  : t(locale, "parkinson", "runInference")}
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".wav,.mp3,.ogg,.webm,.m4a,audio/*"
-              className="hidden"
-              onChange={handleFileSelected}
-            />
-            <Button
-              variant="secondary"
-              size="lg"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isConsentOpen || isUploadingFile || recording.isRecording}
-            >
-              {isUploadingFile
-                ? t(locale, "parkinson", "uploading")
-                : t(locale, "parkinson", "uploadAudioFile")}
-            </Button>
+          <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:flex-wrap sm:justify-center">
+            <div className="flex items-center gap-3">
+              <Button
+                size="lg"
+                onClick={handleRecordButtonClick}
+                disabled={isConsentOpen || isUploadingAudio || isExtractingBiomarkers || isUploadingFile}
+              >
+                <Play className="mr-2 h-4 w-4" />
+                {isExtractingBiomarkers
+                  ? t(locale, "parkinson", "extractingBiomarkers")
+                  : isUploadingAudio
+                  ? t(locale, "parkinson", "uploading")
+                  : recording.isRecording
+                    ? t(locale, "parkinson", "stop")
+                    : t(locale, "parkinson", "start")}
+              </Button>
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={handleInferenceClick}
+                disabled={!canRunInference || prediction.isPending || isConsentOpen}
+              >
+                {prediction.isPending
+                  ? t(locale, "parkinson", "processing")
+                  : isAudioProcessing
+                    ? t(locale, "parkinson", "audioProcessing")
+                    : t(locale, "parkinson", "runInference")}
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".wav,.mp3,.ogg,.webm,.m4a,audio/*"
+                className="hidden"
+                onChange={handleFileSelected}
+              />
+              <Button
+                variant="ghost"
+                size="lg"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isConsentOpen || isUploadingFile || recording.isRecording}
+              >
+                {isUploadingFile
+                  ? t(locale, "parkinson", "uploading")
+                  : t(locale, "parkinson", "uploadAudioFile")}
+              </Button>
+            </div>
           </div>
 
           {!mockApiEnabled && latestAudio ? (
