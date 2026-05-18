@@ -6,10 +6,9 @@ import { Mic, Play } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/atoms/button";
 import { Card } from "@/components/atoms/card";
-import { Input } from "@/components/atoms/input";
 import { useSessionState } from "@/features/auth/use-session";
 import { useAudioRecording } from "@/features/parkinson/use-audio-recording";
-import { parkinsonTestFeaturePreset, useParkinsonPrediction } from "@/features/parkinson/mutations";
+import { useParkinsonPrediction } from "@/features/parkinson/mutations";
 import {
   extractVoiceBiomarkersMultipart,
   getAudioFeatures,
@@ -20,25 +19,6 @@ import {
 } from "@/lib/api";
 import { useUiStore } from "@/stores/ui-store";
 import { t } from "@/lib/i18n";
-
-const editableFeatureKeys = [
-  "MDVP:RAP",
-  "MDVP:PPQ",
-  "Jitter:DDP",
-  "MDVP:Shimmer(dB)",
-  "Shimmer:APQ3",
-  "Shimmer:APQ5",
-  "MDVP:APQ",
-  "Shimmer:DDA",
-  "NHR",
-  "HNR",
-  "RPDE",
-  "DFA",
-  "D2",
-  "PPE",
-] as const;
-
-type EditableFeatureKey = (typeof editableFeatureKeys)[number];
 
 function formatElapsed(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
@@ -67,14 +47,6 @@ export default function ParkinsonPage() {
     validation: false,
     service: false,
   });
-  const [testFeatureValues, setTestFeatureValues] = useState<Record<EditableFeatureKey, number>>({
-    ...parkinsonTestFeaturePreset,
-  });
-  const [jsonEditorValue, setJsonEditorValue] = useState(
-    JSON.stringify(parkinsonTestFeaturePreset, null, 2),
-  );
-  const [jsonEditorMessage, setJsonEditorMessage] = useState<string | null>(null);
-  const [jsonEditorError, setJsonEditorError] = useState<string | null>(null);
   const firstConsentRef = useRef<HTMLInputElement>(null);
   const { accessToken, email } = useSessionState();
   const recording = useAudioRecording();
@@ -89,7 +61,6 @@ export default function ParkinsonPage() {
       return hasProcessing ? 2000 : false;
     },
   });
-  const showTestPanel = mockApiEnabled || process.env.NODE_ENV !== "production";
   const latestAudio = audioQuery.data?.items?.[0] ?? null;
   const isAudioReady = Boolean(
     latestAudio &&
@@ -159,45 +130,6 @@ export default function ParkinsonPage() {
   }, [isConsentOpen]);
 
   const canProceed = checks.data && checks.validation && checks.service;
-
-  const updateFeatureValue = (key: EditableFeatureKey, value: string) => {
-    const parsed = Number(value);
-    setTestFeatureValues((prev) => ({
-      ...prev,
-      [key]: Number.isFinite(parsed) ? parsed : prev[key],
-    }));
-  };
-
-  const applyJsonValues = () => {
-    try {
-      const parsed = JSON.parse(jsonEditorValue) as Partial<Record<EditableFeatureKey, unknown>>;
-      const next = { ...testFeatureValues };
-
-      for (const key of editableFeatureKeys) {
-        if (parsed[key] === undefined) {
-          continue;
-        }
-
-        const num = Number(parsed[key]);
-        if (!Number.isFinite(num)) {
-          throw new Error("invalid");
-        }
-
-        next[key] = num;
-      }
-
-      setTestFeatureValues(next);
-      setJsonEditorError(null);
-      setJsonEditorMessage(t(locale, "parkinson", "jsonApplied"));
-    } catch {
-      setJsonEditorMessage(null);
-      setJsonEditorError(t(locale, "parkinson", "jsonInvalid"));
-    }
-  };
-
-  useEffect(() => {
-    setJsonEditorValue(JSON.stringify(testFeatureValues, null, 2));
-  }, [testFeatureValues]);
 
   const activePrediction = biomarkerResponse?.parkinson_inference ?? prediction.data ?? null;
   const result = useMemo(() => {
@@ -384,11 +316,6 @@ export default function ParkinsonPage() {
           : null;
 
     const handleInferenceClick = async () => {
-      if (mockApiEnabled) {
-        prediction.mutate(testFeatureValues);
-        return;
-      }
-
       if (!accessToken) {
         setAudioUploadError(t(locale, "parkinson", "authRequiredForUpload"));
         return;
@@ -699,66 +626,6 @@ export default function ParkinsonPage() {
           </div>
         </Card>
       </div>
-
-      {showTestPanel ? (
-      <Card>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h3 className="text-xl font-bold text-foreground">{t(locale, "parkinson", "testValuesTitle")}</h3>
-            <p className="text-sm text-muted-foreground">{t(locale, "parkinson", "testValuesSubtitle")}</p>
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              setTestFeatureValues({ ...parkinsonTestFeaturePreset });
-              setJsonEditorMessage(null);
-              setJsonEditorError(null);
-            }}
-          >
-            {t(locale, "parkinson", "restorePreset")}
-          </Button>
-        </div>
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {editableFeatureKeys.map((key) => (
-            <label key={key} className="space-y-1">
-              <span className="block text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">{key}</span>
-              <Input
-                type="number"
-                step="any"
-                value={testFeatureValues[key]}
-                onChange={(event) => updateFeatureValue(key, event.target.value)}
-                aria-label={key}
-              />
-            </label>
-          ))}
-        </div>
-
-        <div className="mt-6 space-y-2">
-          <h4 className="text-sm font-semibold text-foreground">{t(locale, "parkinson", "testValuesJsonTitle")}</h4>
-          <p className="text-xs text-muted-foreground">{t(locale, "parkinson", "testValuesJsonSubtitle")}</p>
-          <textarea
-            className="ghost-border min-h-[220px] w-full rounded-xl bg-surface-low p-3 text-xs text-foreground focus-visible:bg-surface-lowest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
-            value={jsonEditorValue}
-            onChange={(event) => {
-              setJsonEditorValue(event.target.value);
-              setJsonEditorMessage(null);
-              setJsonEditorError(null);
-            }}
-            aria-label={t(locale, "parkinson", "testValuesJsonTitle")}
-            spellCheck={false}
-          />
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={applyJsonValues}>
-              {t(locale, "parkinson", "applyJson")}
-            </Button>
-            {jsonEditorMessage ? <p className="text-xs text-emerald-700">{jsonEditorMessage}</p> : null}
-            {jsonEditorError ? <p className="text-xs font-semibold text-red-700">{jsonEditorError}</p> : null}
-          </div>
-        </div>
-      </Card>
-      ) : null}
 
     </section>
   );
