@@ -16,15 +16,13 @@ class AudioProcessingRequest(BaseModel):
 class AudioProcessingResponse(BaseModel):
     """Schema de respuesta para procesamiento de audio."""
     audio_record_id: int
-    status: str  # success, already_processed, failed
+    status: str  # códigos API: success, already_processed, failed
     features: Optional[Dict[str, float]] = None
     diagnosis_id: Optional[int] = None
     prediction: Optional[str] = None
     probability: Optional[float] = None
     message: Optional[str] = None
     error: Optional[str] = None
-    missing_features: Optional[List[str]] = None
-    invalid_features: Optional[List[str]] = None
 
 
 class BatchProcessingRequest(BaseModel):

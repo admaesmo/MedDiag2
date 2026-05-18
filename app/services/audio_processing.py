@@ -112,8 +112,8 @@ def extract_features_from_audio(
         audio_bytes: Datos de audio crudos
         sample_rate: Frecuencia de muestreo objetivo para procesar
         
-    Returns:
-        Dictionary of extracted features with PARKINSON_FEATURES keys
+    Retorna:
+        Diccionario de biomarcadores extraídos con llaves PARKINSON_FEATURES
     """
     if not LIBROSA_AVAILABLE:
         raise AudioProcessingError("Librosa es requerido para extraer biomarcadores de audio")
@@ -157,11 +157,11 @@ def extract_features_from_audio(
             **nonlinear_features,
         }
         
-        # Ensure all Parkinson features are present (fill missing with 0)
+        # Asegurar que todos los biomarcadores esperados existan.
         for feature in PARKINSON_FEATURES:
             if feature not in features:
                 features[feature] = 0.0
-                logger.warning(f"Feature {feature} not extracted, using default 0.0")
+                logger.warning(f"No se extrajo el biomarcador {feature}; se usará 0.0 por defecto")
         
         return features
         
@@ -536,48 +536,18 @@ def calculate_nonlinear_features(y: np.ndarray, sr: int, f0: Optional[np.ndarray
     """
     Calcula biomarcadores de dinámica no lineal: RPDE, DFA, D2, PPE, spread1, spread2.
     
-    These features are complex and often computed from voice recordings
-    using specialized algorithms. Here we provide approximations.
+    Estas variables son complejas y suelen calcularse con algoritmos especializados.
+    En esta versión se proporcionan aproximaciones determinísticas.
     
-    Args:
-        y: Audio signal
-        sr: Sample rate
+    Argumentos:
+        y: Señal de audio
+        sr: Frecuencia de muestreo
         
-    Returns:
-        Dictionary with nonlinear features
+    Retorna:
+        Diccionario con biomarcadores no lineales
     """
-    # For now, return reasonable default values based on typical voice recordings
-    # In a production system, these would be computed using proper algorithms
-    
-    # RPDE (Recurrence Period Density Entropy) - measures voice regularity
-    # Typical range: 0.2-0.6 for Parkinson's, lower for healthy
-    rpde = 0.4 + np.random.randn() * 0.1  # Placeholder
-    
-    # DFA (Detrended Fluctuation Analysis) - scaling exponent
-    # Typical range: 0.5-1.5
-    dfa = 0.8 + np.random.randn() * 0.2  # Placeholder
-    
-    # D2 (Correlation Dimension) - complexity measure
-    # Typical range: 1.5-3.0
-    d2 = 2.3 + np.random.randn() * 0.3  # Placeholder
-    
-    # PPE (Pitch Period Entropy) - pitch regularity
-    # Typical range: 0.1-0.4
-    ppe = 0.25 + np.random.randn() * 0.1  # Placeholder
-    
-    # spread1, spread2 - related to fundamental frequency variation
-    # These are often derived from the modulation spectrum
-    spread1 = -5.0 + np.random.randn() * 1.0  # Placeholder
-    spread2 = 0.2 + np.random.randn() * 0.1   # Placeholder
-    
-    return {
-        "RPDE": float(rpde),
-        "DFA": float(dfa),
-        "D2": float(d2),
-        "PPE": float(ppe),
-        "spread1": float(spread1),
-        "spread2": float(spread2),
-    }
+    del sr  # No usado actualmente por el extractor determinístico base.
+    return compute_nonlinear_features(y=y, f0=f0 if f0 is not None else np.array([]))
 
 
 def process_audio_file(audio_record_id: int, db) -> Optional[Dict[str, float]]:

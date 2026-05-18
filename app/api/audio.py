@@ -29,7 +29,7 @@ def _is_admin(db: Session, user: User) -> bool:
 
 
 def _is_ready_status(status_value: str) -> bool:
-    return status_value in {"inference_completed", "processed", "transcribed"}
+    return status_value in {"processed", "transcribed"}
 
 
 def _extract_processing_error(notes: str | None) -> str | None:
@@ -48,10 +48,6 @@ def _extract_processing_error(notes: str | None) -> str | None:
 
 
 def _to_audio_record_out(record) -> AudioRecordOut:
-    latest_features = None
-    if getattr(record, "biomarker_features", None):
-        latest_features = sorted(record.biomarker_features, key=lambda item: (item.created_at, item.id))[-1]
-
     return AudioRecordOut(
         id=record.id,
         uuid=record.uuid,
@@ -65,9 +61,7 @@ def _to_audio_record_out(record) -> AudioRecordOut:
         status=record.status,
         transcript_text=record.transcript_text,
         notes=record.notes,
-        is_ready_for_inference=bool(
-            latest_features.ready_for_inference if latest_features else _is_ready_status(record.status)
-        ),
+        is_ready_for_inference=_is_ready_status(record.status),
         processing_error=_extract_processing_error(record.notes),
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -227,9 +221,10 @@ from app.services.audio_pipeline import (
     process_audio_pipeline,
     batch_process_user_audio,
     get_audio_analysis_summary,
+    get_latest_feature_set,
+    load_feature_set_payload,
     AudioPipelineError
 )
-from app.services.audio_quality import get_latest_audio_quality_report
 
 
 @router.post("/{audio_id}/process", response_model=AudioProcessingResponse)
@@ -250,7 +245,7 @@ def process_audio(
     if record.user_id != current_user.id and not _is_admin(db, current_user):
         raise HTTPException(status_code=403, detail="Acceso denegado.")
 
-    if record.status in {"processing", "preprocessing", "quality_checked"}:
+    if record.status == "processing":
         return AudioProcessingResponse(
             audio_record_id=record.id,
             status="processing",
@@ -275,9 +270,7 @@ def process_audio(
             diagnosis_id=result.get("diagnosis_id"),
             prediction=result.get("prediction"),
             probability=result.get("probability"),
-            message=result.get("message"),
-            missing_features=result.get("missing_features"),
-            invalid_features=result.get("invalid_features"),
+            message=result.get("message")
         )
     except AudioPipelineError as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -352,7 +345,7 @@ def get_audio_features(
     if record.user_id != current_user.id and not _is_admin(db, current_user):
         raise HTTPException(status_code=403, detail="Acceso denegado.")
     
-    if not _is_ready_status(record.status) or not record.notes:
+    if not _is_ready_status(record.status):
         raise HTTPException(
             status_code=400, 
             detail="El audio no ha sido procesado o no hay biomarcadores disponibles."
@@ -379,4 +372,88 @@ def get_audio_features(
         features = notes_data.get("extracted_features", {})
         return {"audio_id": audio_id, "features": features}
     except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Failed to parse audio features.")
+        raise HTTPException(status_code=500, detail="No se pudieron interpretar los biomarcadores del audio.")
+
+
+# ---------------------------------------------------------------------------
+# Endpoints de control de calidad
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{audio_id}/quality")
+def get_audio_quality_report(
+    audio_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Obtiene el último reporte de calidad de un audio. Solo propietario o administrador."""
+    record = audio_service.get_audio_record(db, audio_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Registro de audio no encontrado.")
+
+    if record.user_id != current_user.id and not _is_admin(db, current_user):
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+
+    from app.services.quality_control import get_latest_quality_report
+    report = get_latest_quality_report(db, audio_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="No hay reporte de calidad disponible para este audio.")
+
+    return {
+        "id": report.id,
+        "audio_record_id": report.audio_record_id,
+        "is_valid": report.is_valid,
+        "quality_score": report.quality_score,
+        "rejection_reason": report.rejection_reason,
+        "duration_seconds": report.duration_seconds,
+        "rms_energy": report.rms_energy,
+        "peak_amplitude": report.peak_amplitude,
+        "clipping_detected": report.clipping_detected,
+        "clipping_ratio": report.clipping_ratio,
+        "snr_db": report.snr_db,
+        "silence_ratio": report.silence_ratio,
+        "noise_floor_db": report.noise_floor_db,
+        "bandwidth_hz": report.bandwidth_hz,
+        "created_at": report.created_at,
+    }
+
+
+@router.post("/{audio_id}/quality/check")
+def run_audio_quality_check(
+    audio_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Ejecuta o repite el control de calidad de un audio. Solo propietario o administrador."""
+    from app.services.quality_control import run_quality_check
+
+    record = audio_service.get_audio_record(db, audio_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Registro de audio no encontrado.")
+
+    if record.user_id != current_user.id and not _is_admin(db, current_user):
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+
+    try:
+        report = run_quality_check(db, audio_id)
+        return {
+            "id": report.id,
+            "audio_record_id": report.audio_record_id,
+            "is_valid": report.is_valid,
+            "quality_score": report.quality_score,
+            "rejection_reason": report.rejection_reason,
+            "duration_seconds": report.duration_seconds,
+            "rms_energy": report.rms_energy,
+            "peak_amplitude": report.peak_amplitude,
+            "clipping_detected": report.clipping_detected,
+            "clipping_ratio": report.clipping_ratio,
+            "snr_db": report.snr_db,
+            "silence_ratio": report.silence_ratio,
+            "noise_floor_db": report.noise_floor_db,
+            "bandwidth_hz": report.bandwidth_hz,
+            "created_at": report.created_at,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=f"Falló el control de calidad: {exc}")

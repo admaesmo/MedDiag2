@@ -11,156 +11,143 @@
 
 **MedDiag2** es una plataforma web de **tamizaje experimental** de la enfermedad de Parkinson mediante análisis de voz. El sistema permite a los usuarios grabar o subir una muestra de voz sostenida, extraer automáticamente **22 biomarcadores acústicos** (F0, jitter, shimmer, HNR, NHR, y parámetros no lineales como DFA, D2, RPDE, PPE), y obtener una **predicción preliminar basada en machine learning**.
 
-El sistema fue construido utilizando **FastAPI, Next.js y Python**, integrando modelos de Machine Learning entrenados con datos medicos. La idea principal es proporcionar una herramienta que ayude a identificar tempranamente posibles problemas de salud.
+El proyecto integra:
+- **Frontend** en Next.js con interfaz para grabación/carga de audio, historial y visualización de resultados.
+- **Backend** en FastAPI con pipeline completo de procesamiento de señales.
+- **Pipeline de audio** con extracción de biomarcadores, control de calidad y trazabilidad mediante Feature Store versionado.
+- **Modelos ML** serializados para inferencia (Parkinson, y compatibilidad histórica con diabetes y enfermedad cardiovascular).
+
+> ⚠️ **Importante:** MedDiag2 es una **herramienta académica experimental de apoyo**, no un sistema de diagnóstico clínico. No reemplaza la evaluación de un profesional de la salud.
 
 ---
 
-## Objetivos del Proyecto
+## Tabla de Contenidos
 
-### Objetivo General
-
-Desarrollar un sistema de apoyo diagnostico basado en inteligencia artificial que permita a las personas ingresar sintomas y recibir predicciones preliminares sobre posibles enfermedades.
-
-### Objetivos Especificos
-
-1. Analizar y adaptar un repositorio base con arquitectura modular
-2. Entrenar modelos de Machine Learning para predicción de enfermedades
-3. Crear una interfaz de usuario web facil de usar
-4. Realizar pruebas del sistema en diferentes fases del desarrollo
-5. Documentar todo el proceso y resultados obtenidos
-
----
-
-## Tecnologías Utilizadas
-
-| Tecnología | Versión | Para qué se usa |
-|-----------|---------|--------------------|
-| **Python** | 3.10+ | Lenguaje principal de programación |
-| **Next.js** | 13+ | Para crear la interfaz web |
-| **scikit-learn** | 1.3+ | Para entrenar los modelos de Machine Learning |
-| **Pandas** | 2.0+ | Para manipular y procesar los datos |
-| **NumPy** | 1.24+ | Para calculos con arrays y matrices |
-| **SQLite** | 3.40+ | Base de datos local donde guardamos los registros |
-| **FastAPI** | Latest | Para el backend y gestionar las peticiones |
+- [Estado del Proyecto](#estado-del-proyecto)
+- [Objetivos](#objetivos)
+- [Arquitectura](#arquitectura)
+- [Pipeline de Análisis de Voz](#pipeline-de-análisis-de-voz)
+- [Biomarcadores Extraídos](#biomarcadores-extraídos)
+- [Modelos ML](#modelos-ml)
+- [Tecnologías](#tecnologías)
+- [Instalación y Ejecución](#instalación-y-ejecución)
+- [Estructura del Proyecto](#estructura-del-proyecto)
+- [Documentación](#documentación)
+- [Limitaciones](#limitaciones)
+- [Trabajo Futuro](#trabajo-futuro)
+- [Licencia](#licencia)
 
 ---
 
-## 📊 Modelos de Machine Learning y Datasets
+## Estado del Proyecto
 
-### Visión General del Sistema
-
-MedDiag implementa tres modelos de clasificación binaria especializados en la predicción de riesgos de enfermedades crónicas. Cada modelo fue entrenado con datasets públicos reconocidos del repositorio UCI Machine Learning Repository, garantizando reproducibilidad y confiabilidad científica.
-
----
-
-### 🏥 Modelos Implementados
-
-#### 1. **Predictor de Diabetes Tipo 2**
-- **Archivo del modelo:** `diabetes_model.sav`
-- **Características de entrada:** 8 variables médicas
-  - Número de embarazos, Glucosa en plasma, Presión arterial
-  - Grosor de pliegue de piel, Insulina, BMI (Índice de masa corporal)
-  - Función de pedigree de diabetes, Edad
-- **Salida:** Predicción binaria (0/1) + Probabilidad de enfermedad
-
-#### 2. **Predictor de Enfermedades Cardiovasculares**
-- **Archivo del modelo:** `heart_disease_model.sav`
-- **Características de entrada:** 13 variables clínicas
-  - Edad, Sexo, Tipo de dolor en el pecho
-  - Presión arterial, Colesterol sérico
-  - Glucosa en ayunas, Resultados ECG
-  - Frecuencia cardíaca máxima, Angina por ejercicio
-  - Depresión ST, Pendiente, Vasos mayores, Talasemia
-- **Salida:** Predicción binaria (0/1) + Probabilidad de enfermedad
-
-#### 3. **Predictor de Enfermedad de Parkinson**
-- **Archivo del modelo:** `parkinsons_model.sav`
-- **Características de entrada:** 22 medidas de voz biomedica
-  - Medidas de frecuencia (fo, fhi, flo)
-  - Jitter y Shimmer (variabilidad en voz)
-  - Medidas de ruido-armonicidad (NHR, HNR)
-  - Medidas de entropía (RPDE, DFA)
-  - Medidas de dispersión no-lineal (D2, PPE)
-- **Salida:** Predicción binaria (0/1) + Probabilidad de enfermedad
+| Componente | Estado | Detalle |
+|-----------|--------|---------|
+| Pipeline de audio | ✅ Funcional | Carga, decodificación, extracción de 22 biomarcadores |
+| Biomarcadores no lineales | ✅ Implementados | DFA, D2, PPE, RPDE, spread1, spread2 (rama `marcadoresNL`) |
+| Feature Store | ✅ Implementado | Versionado con `extractor_version` y `feature_schema_version` |
+| Inferencia | ✅ Funcional | Predicción preliminar con probabilidad |
+| Frontend (grabación/carga) | ✅ Funcional | Interfaz de usuario con autenticación |
+| Control de calidad de audio | ⏳ Pendiente | Servicio dedicado por implementar |
+| Parselmouth como extractor base | ⏳ Pendiente | Actualmente se usa Librosa como ruta principal |
+| Validación clínica | ❌ Pendiente | Sin evaluación con pacientes reales |
 
 ---
 
-### 📦 Datasets Públicos Utilizados
+## Objetivos
 
-#### **1. Pima Indians Diabetes Dataset**
-| Característica | Valor |
-|---|---|
-| **Fuente** | UCI Machine Learning Repository |
-| **Muestras** | 768 registros |
-| **Clases** | 268 positivos (34.9%), 500 negativos (65.1%) |
-| **Características** | 8 variables médicas numéricas |
-| **Población** | Mujeres indígenas Pima, ≥21 años |
-| **Licencia** | Dominio público |
-| **Referencia** | National Institute of Diabetes |
+### General
+Desarrollar y documentar un prototipo web de tamizaje experimental de Parkinson basado en análisis de voz, capaz de extraer biomarcadores acústicos desde grabaciones de usuario y utilizarlos como entrada para un modelo de machine learning.
 
-**Descripción:** Dataset de referencia internacional para investigación de diabetes tipo 2. Contiene mediciones médicas reales de una población específica con alto riesgo de diabetes.
-
-#### **2. Cleveland Heart Disease Dataset**
-| Característica | Valor |
-|---|---|
-| **Fuente** | Cleveland Clinic Foundation, UCI Repository |
-| **Año de recolección** | 1987 |
-| **Muestras** | 303 pacientes |
-| **Clases** | 165 con enfermedad (54.5%), 138 sanos (45.5%) |
-| **Características** | 13 variables seleccionadas de 76 originales |
-| **Variables** | Medidas clínicas, ECG, pruebas de esfuerzo |
-| **Licencia** | Dominio público |
-
-**Descripción:** Dataset histórico de una institución médica real que contiene diagnósticos confirmados clínicamente. Proporciona datos equilibrados y validados por profesionales médicos.
-
-#### **3. Oxford Parkinson's Disease Detection Dataset**
-| Característica | Valor |
-|---|---|
-| **Fuente** | UCI Machine Learning Repository |
-| **Muestras** | 197 grabaciones de voz |
-| **Participantes** | 31 personas (23 con Parkinson, 8 sanas) |
-| **Características** | 22 medidas de voz biomedica |
-| **Frecuencia de muestreo** | 16 kHz, 16-bit WAV |
-| **Licencia** | Dominio público |
-| **Referencia** | Max A. Little et al., IEEE TBME (2008) |
-
-**Descripción:** Dataset especializado que demuestra como el análisis de voz puede detectar síntomas de Parkinson. Contiene medidas extraídas de grabaciones de voz de pacientes diagnosticados.
+### Específicos
+1. Integrar un flujo de carga, almacenamiento y procesamiento de audios dentro de una arquitectura web.
+2. Generar un vector de 22 características acústicas compatible con el esquema clásico del dataset de Parkinson.
+3. Implementar aproximaciones determinísticas para biomarcadores no lineales.
+4. Persistir los biomarcadores extraídos con versionado del extractor y del esquema de características.
+5. Generar una predicción preliminar de Parkinson a partir del vector de biomarcadores.
+6. Identificar y documentar limitaciones técnicas, metodológicas y clínicas.
 
 ---
 
-### 🔬 Pipeline de Entrenamiento
-
-El proceso de entrenamiento de cada modelo sigue estos pasos:
+## Arquitectura
 
 ```
-1. CARGA DE DATOS
-   └─ Importar dataset CSV
-   └─ Análisis exploratorio (EDA)
-   └─ Detección de valores faltantes
+┌──────────────┐     ┌─────────────────────────────┐     ┌──────────────┐
+│  Frontend    │────▶│     Backend FastAPI          │────▶│  Modelos ML  │
+│  (Next.js)   │     │  ┌─────────────────────────┐│     │  (.sav)      │
+│              │     │  │  Pipeline de Audio       ││     └──────────────┘
+│  Grabación   │     │  │  ┌─────────────────┐    ││     ┌──────────────┐
+│  / Carga     │     │  │  │ Decodificación  │    ││     │  Base de     │
+│  Historial   │     │  │  ├─────────────────┤    ││     │  Datos       │
+│  Resultados  │     │  │  │ Extracción de   │    ││     │  (SQLite/    │
+└──────────────┘     │  │  │ Biomarcadores   │    ││     │  PostgreSQL) │
+                     │  │  ├─────────────────┤    ││     └──────────────┘
+                     │  │  │ Feature Store   │    ││
+                     │  │  ├─────────────────┤    ││
+                     │  │  │ Inferencia      │    ││
+                     │  │  └─────────────────┘    ││
+                     │  └─────────────────────────┘│
+                     └─────────────────────────────┘
+```
 
-2. PREPROCESAMIENTO
-   └─ Imputación de valores faltantes (media/mediana)
-   └─ Feature Scaling (StandardScaler)
-   └─ Tratamiento de desbalance de clases (SMOTE)
+### Frontend
+- **Next.js 13+** con App Router y TypeScript
+- Autenticación local o mediante Supabase
+- Componentes atómicos (Atomic Design): atoms, molecules, organisms, templates
+- Grabación de audio en el navegador y conversión a WAV
+- Internacionalización (i18n): español, inglés, portugués (Brasil)
+- Rutas protegidas: dashboard, historial, análisis de Parkinson, configuración
 
-3. DIVISIÓN DE DATOS
-   └─ Train: 70% (2,457 samples en total)
-   └─ Validation: 15% (525 samples)
-   └─ Test: 15% (525 samples)
+### Backend
+- **FastAPI** con endpoints REST documentados (Swagger en `/docs`)
+- Pipeline de audio en múltiples capas
+- Persistencia con SQLAlchemy + Alembic para migraciones
+- Almacenamiento de audio configurable (local, cloud)
+- Feature Store versionado para trazabilidad de biomarcadores
 
-4. ENTRENAMIENTO DEL MODELO
-   └─ Algoritmo seleccionado (RF/SVM/XGBoost)
-   └─ Ajuste de hiperparámetros
-   └─ Validación cruzada (5-fold)
+---
 
-5. EVALUACIÓN
-   └─ Accuracy, Precision, Recall, F1-Score
-   └─ ROC-AUC, Matriz de confusión
-   └─ Análisis de métricas médicas
+## Pipeline de Análisis de Voz
 
-6. GUARDADO
-   └─ Serialización con pickle (.sav)
-   └─ Almacenamiento en saved_models/
+```
+Audio del usuario
+      │
+      ▼
+┌──────────────────┐
+│  Validación       │  Tipo MIME, tamaño, duración mínima (0.5s)
+└──────────────────┘
+      │
+      ▼
+┌──────────────────┐
+│  Decodificación   │  Librosa (principal) → Pydub (fallback)
+│  y normalización │  Mono, frecuencia controlada
+└──────────────────┘
+      │
+      ▼
+┌──────────────────┐
+│  Extracción F0    │  librosa.pyin → Parselmouth → SciPy (fallback)
+└──────────────────┘
+      │
+      ▼
+┌────────────────────────┐
+│  Extracción de         │  Jitter, shimmer, HNR, NHR
+│  biomarcadores         │  DFA, D2, RPDE, PPE, spread1, spread2
+└────────────────────────┘
+      │
+      ▼
+┌──────────────────┐
+│  Feature Store    │  Persistencia con versión del extractor
+└──────────────────┘
+      │
+      ▼
+┌──────────────────┐
+│  Inferencia       │  Modelo de Parkinson → predicción + probabilidad
+└──────────────────┘
+      │
+      ▼
+┌──────────────────┐
+│  Visualización    │  Resultados en frontend
+└──────────────────┘
 ```
 
 ---
@@ -185,19 +172,20 @@ La extracción usa una estrategia híbrida:
 
 ---
 
-### 📊 Métricas de Evaluación
+## Modelos ML
 
-Cada modelo es evaluado con métricas clínico-médicas:
+### Modelo principal: Parkinson
+- **Archivo:** `saved_models/parkinsons_model.sav`
+- **Dataset:** Oxford Parkinson's Disease Detection Dataset (UCI)
+- **Entrada:** Vector de 22 biomarcadores de voz
+- **Salida:** Clasificación binaria + probabilidad
+- **Rendimiento:** Accuracy ~88.3%, AUC-ROC ~0.93
 
-| Métrica | Definición | Importancia |
-|---|---|---|
-| **Accuracy** | (TP+TN)/(Total) | Exactitud general |
-| **Precision** | TP/(TP+FP) | Evitar falsos positivos |
-| **Recall/Sensitivity** | TP/(TP+FN) | Evitar falsos negativos (CRÍTICO) |
-| **F1-Score** | Media armónica P-R | Balance Precision-Recall |
-| **AUC-ROC** | Area bajo curva ROC | Capacidad discriminativa |
+### Modelos históricos (compatibilidad)
+- **Diabetes Tipo 2** — 8 variables clínicas
+- **Enfermedad Cardiovascular** — 13 variables clínicas
 
-**Nota Clínica:** En diagnóstico médico se prioriza Recall/Sensitivity para no perder casos positivos, aunque implique más falsos positivos que son revisados clínicamente.
+> El desarrollo activo se centra en el módulo de Parkinson por voz. Los modelos de diabetes y cardiovascular se conservan por compatibilidad histórica.
 
 ---
 
@@ -258,54 +246,7 @@ STORAGE_LOCAL_PATH=./storage/audio
 MAX_AUDIO_FILE_SIZE_MB=25
 ```
 
-Frontend (`frontend/web/.env.local`):
-
-```bash
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
-NEXT_PUBLIC_USE_MOCK_API=false
-NEXT_PUBLIC_AUTH_MODE=local
-NEXT_PUBLIC_LOCAL_AUTH_EMAIL=demo@meddiag.local
-NEXT_PUBLIC_LOCAL_AUTH_PASSWORD=meddiag123
-NEXT_PUBLIC_LOCAL_AUTH_ROLE=patient
-NEXT_PUBLIC_LOCAL_AUTH_DISPLAY_NAME=Demo Local
-```
-
-Si prefieres PostgreSQL local, cambia `DATABASE_URL` a:
-
-```bash
-postgresql+psycopg2://meddiag:meddiag@localhost:5432/meddiag
-```
-
-y levanta la base con:
-
-```bash
-docker compose up -d db
-```
-
-### Paso 5: Ejecutar la Aplicacion
-
-Si quieres levantar todo con un solo comando:
-
-```bash
-# Linux / macOS
-./scripts/start-local.sh
-
-# Windows PowerShell
-.\scripts\start-local.ps1
-```
-
-Y para detenerlo:
-
-```bash
-# Linux / macOS
-./scripts/stop-local.sh
-
-# Windows PowerShell
-.\scripts\stop-local.ps1
-```
-
-#### Opcion 1: Frontend web (Next.js)
-
+### 5. Instalar frontend
 ```bash
 cd frontend/web
 cp .env.local.example .env.local  # Ajustar si es necesario

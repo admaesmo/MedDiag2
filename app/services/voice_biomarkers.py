@@ -8,7 +8,6 @@ de biomarcadores de voz sin alterar el flujo general de persistencia de audio.
 
 from __future__ import annotations
 
-import logging
 import os
 import tempfile
 from dataclasses import dataclass
@@ -45,12 +44,6 @@ DEFAULT_PITCH_CEILING_HZ = 300.0
 PARKINSON_MODEL_FILENAME = "parkinsons_model.sav"
 PARKINSON_POSITIVE_MESSAGE = "La persona puede tener Parkinson, consulte a su médico."
 PARKINSON_NEGATIVE_MESSAGE = "La persona no tiene Parkinson."
-MIN_PERIOD_SECONDS = 0.0001
-MAX_PERIOD_SECONDS = 0.02
-MAX_PERIOD_FACTOR = 1.3
-MAX_AMPLITUDE_FACTOR = 1.6
-
-logger = logging.getLogger(__name__)
 
 
 class VoiceBiomarkerError(Exception):
@@ -240,211 +233,22 @@ def extract_parkinson_model_features(prepared_audio: PreparedVoiceAudio) -> Dict
     alineada con el contrato del modelo de Parkinson existente.
     """
 
-    return build_parkinson_features_parselmouth_primary(prepared_audio)
-
-
-def extract_parkinson_core_features(
-    prepared_audio: PreparedVoiceAudio,
-    pitch_floor_hz: float = DEFAULT_PITCH_FLOOR_HZ,
-    pitch_ceiling_hz: float = DEFAULT_PITCH_CEILING_HZ,
-) -> Dict[str, float]:
-    """
-    Extract clinically relevant Parkinson features using Parselmouth as primary source.
-    """
     try:
-        sound = Sound(prepared_audio.temp_wav_path)
-        pitch = sound.to_pitch(
-            pitch_floor=pitch_floor_hz,
-            pitch_ceiling=pitch_ceiling_hz,
-        )
-        pitch_values = pitch.selected_array["frequency"]
-        voiced_pitch = pitch_values[pitch_values > 0]
-        if voiced_pitch.size == 0:
-            raise VoiceBiomarkerError(
-                "No voiced frames were detected. Please upload a clearer voice sample."
-            )
-
-        point_process = call(sound, "To PointProcess (periodic, cc)", pitch_floor_hz, pitch_ceiling_hz)
-        harmonicity = call(sound, "To Harmonicity (cc)", 0.01, pitch_floor_hz, 0.1, 1.0)
-
-        jitter_local = _ensure_finite_metric(
-            call(
-                point_process,
-                "Get jitter (local)",
-                0,
-                0,
-                MIN_PERIOD_SECONDS,
-                MAX_PERIOD_SECONDS,
-                MAX_PERIOD_FACTOR,
-            ),
-            "MDVP:Jitter(%)",
-        )
-        jitter_abs = _ensure_finite_metric(
-            call(
-                point_process,
-                "Get jitter (local, absolute)",
-                0,
-                0,
-                MIN_PERIOD_SECONDS,
-                MAX_PERIOD_SECONDS,
-                MAX_PERIOD_FACTOR,
-            ),
-            "MDVP:Jitter(Abs)",
-        )
-        jitter_rap = _ensure_finite_metric(
-            call(
-                point_process,
-                "Get jitter (rap)",
-                0,
-                0,
-                MIN_PERIOD_SECONDS,
-                MAX_PERIOD_SECONDS,
-                MAX_PERIOD_FACTOR,
-            ),
-            "MDVP:RAP",
-        )
-        jitter_ppq5 = _ensure_finite_metric(
-            call(
-                point_process,
-                "Get jitter (ppq5)",
-                0,
-                0,
-                MIN_PERIOD_SECONDS,
-                MAX_PERIOD_SECONDS,
-                MAX_PERIOD_FACTOR,
-            ),
-            "MDVP:PPQ",
-        )
-
-        shimmer_local = _ensure_finite_metric(
-            call(
-                [sound, point_process],
-                "Get shimmer (local)",
-                0,
-                0,
-                MIN_PERIOD_SECONDS,
-                MAX_PERIOD_SECONDS,
-                MAX_PERIOD_FACTOR,
-                MAX_AMPLITUDE_FACTOR,
-            ),
-            "MDVP:Shimmer",
-        )
-        shimmer_db = _ensure_finite_metric(
-            call(
-                [sound, point_process],
-                "Get shimmer (local_dB)",
-                0,
-                0,
-                MIN_PERIOD_SECONDS,
-                MAX_PERIOD_SECONDS,
-                MAX_PERIOD_FACTOR,
-                MAX_AMPLITUDE_FACTOR,
-            ),
-            "MDVP:Shimmer(dB)",
-        )
-        shimmer_apq3 = _ensure_finite_metric(
-            call(
-                [sound, point_process],
-                "Get shimmer (apq3)",
-                0,
-                0,
-                MIN_PERIOD_SECONDS,
-                MAX_PERIOD_SECONDS,
-                MAX_PERIOD_FACTOR,
-                MAX_AMPLITUDE_FACTOR,
-            ),
-            "Shimmer:APQ3",
-        )
-        shimmer_apq5 = _ensure_finite_metric(
-            call(
-                [sound, point_process],
-                "Get shimmer (apq5)",
-                0,
-                0,
-                MIN_PERIOD_SECONDS,
-                MAX_PERIOD_SECONDS,
-                MAX_PERIOD_FACTOR,
-                MAX_AMPLITUDE_FACTOR,
-            ),
-            "Shimmer:APQ5",
-        )
-        shimmer_apq11 = _ensure_finite_metric(
-            call(
-                [sound, point_process],
-                "Get shimmer (apq11)",
-                0,
-                0,
-                MIN_PERIOD_SECONDS,
-                MAX_PERIOD_SECONDS,
-                MAX_PERIOD_FACTOR,
-                MAX_AMPLITUDE_FACTOR,
-            ),
-            "MDVP:APQ",
-        )
-        hnr = _ensure_finite_metric(
-            call(harmonicity, "Get mean", 0, 0),
-            "HNR",
-        )
-    except VoiceBiomarkerError:
-        raise
-    except Exception as exc:
-        raise VoiceBiomarkerError(f"Failed to extract Parselmouth core Parkinson features: {exc}") from exc
-
-    nhr = 10 ** (-hnr / 10.0) if np.isfinite(hnr) else float("nan")
-    return {
-        "MDVP:Fo(Hz)": _ensure_finite_metric(np.mean(voiced_pitch), "MDVP:Fo(Hz)"),
-        "MDVP:Fhi(Hz)": _ensure_finite_metric(np.max(voiced_pitch), "MDVP:Fhi(Hz)"),
-        "MDVP:Flo(Hz)": _ensure_finite_metric(np.min(voiced_pitch), "MDVP:Flo(Hz)"),
-        # Parselmouth returns jitter local as a ratio; the model expects percentage.
-        "MDVP:Jitter(%)": float(jitter_local * 100.0),
-        "MDVP:Jitter(Abs)": float(jitter_abs),
-        "MDVP:RAP": float(jitter_rap),
-        "MDVP:PPQ": float(jitter_ppq5),
-        "Jitter:DDP": float(jitter_rap * 3.0),
-        # Parselmouth local shimmer is also a ratio; convert to percentage.
-        "MDVP:Shimmer": float(shimmer_local * 100.0),
-        "MDVP:Shimmer(dB)": float(shimmer_db),
-        "Shimmer:APQ3": float(shimmer_apq3),
-        "Shimmer:APQ5": float(shimmer_apq5),
-        "MDVP:APQ": float(shimmer_apq11),
-        "Shimmer:DDA": float(shimmer_apq3 * 3.0),
-        "NHR": float(nhr),
-        "HNR": float(hnr),
-    }
-
-
-def build_parkinson_features_parselmouth_primary(prepared_audio: PreparedVoiceAudio) -> Dict[str, float]:
-    """
-    Build a 22-feature Parkinson vector where clinically key perturbation/noise
-    metrics come from Parselmouth and remaining features are completed by the
-    support extractor.
-    """
-    try:
-        core_features = extract_parkinson_core_features(prepared_audio)
         normalized_audio_bytes = _read_normalized_audio_bytes(prepared_audio)
-        support_features = extract_features_from_audio(
+        features = extract_features_from_audio(
             normalized_audio_bytes,
             sample_rate=prepared_audio.sample_rate_hz,
             source_name="normalized.wav",
         )
+        validate_required_features(features, PARK_FEATURE_ORDER)
     except AudioProcessingError as exc:
-        raise VoiceBiomarkerError(f"Failed to extract Parkinson model features: {exc}") from exc
+        raise VoiceBiomarkerError(f"No se pudieron extraer características para el modelo de Parkinson: {exc}") from exc
     except ValueError as exc:
-        raise VoiceBiomarkerError(f"Incomplete Parkinson model feature vector: {exc}") from exc
+        raise VoiceBiomarkerError(f"Vector incompleto para el modelo de Parkinson: {exc}") from exc
     except Exception as exc:
         raise VoiceBiomarkerError(f"No se pudo construir el vector del modelo de Parkinson: {exc}") from exc
 
-    merged_features = dict(support_features)
-    merged_features.update(core_features)
-
-    # Explicitly mark missing features as non-finite so inference validation can decide.
-    for feature in PARK_FEATURE_ORDER:
-        if feature not in merged_features:
-            merged_features[feature] = float("nan")
-            logger.warning("Feature %s missing after Parselmouth-first extraction", feature)
-
-    validate_required_features(merged_features, PARK_FEATURE_ORDER)
-    return {feature: float(merged_features[feature]) for feature in PARK_FEATURE_ORDER}
+    return {feature: float(features[feature]) for feature in PARK_FEATURE_ORDER}
 
 
 def build_parkinson_model_bridge(biomarkers: Dict[str, float]) -> Dict[str, object]:

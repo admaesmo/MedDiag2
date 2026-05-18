@@ -12,7 +12,6 @@ from sqlalchemy import (
     Numeric,
     ForeignKey,
     CheckConstraint,
-    JSON,
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
@@ -103,7 +102,8 @@ class AudioRecord(Base):
 
     language_code = Column(String(10), nullable=True)
     status = Column(String(50), nullable=False, default="uploaded")
-    # status values: uploaded, processing, processed/transcribed, failed, archived
+    # Valores de status: uploaded, processing, quality_checked, rejected,
+    #                    partial_features, processed/transcribed, failed, archived
 
     transcript_text = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
@@ -114,12 +114,88 @@ class AudioRecord(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('uploaded','processing','processed','transcribed','failed','archived')",
+            "status IN ('uploaded','processing','quality_checked','rejected',"
+            "'partial_features','processed','transcribed','failed','archived')",
             name="ck_audio_status",
         ),
     )
 
     user = relationship("User", back_populates="audio_records")
+    biomarker_feature_sets = relationship(
+        "BiomarkerFeature",
+        back_populates="audio_record",
+        cascade="all, delete-orphan",
+    )
+    quality_reports = relationship(
+        "AudioQualityReport",
+        back_populates="audio_record",
+        cascade="all, delete-orphan",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Control de calidad
+# ---------------------------------------------------------------------------
+
+
+class AudioQualityReport(Base):
+    """Reporte de calidad por audio usado como compuerta antes de biomarcadores."""
+
+    __tablename__ = "audio_quality_reports"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    audio_record_id = Column(
+        Integer,
+        ForeignKey("audio_records.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Veredicto general.
+    is_valid = Column(Boolean, nullable=False, default=True)
+    quality_score = Column(Float, nullable=True)  # 0.0 … 1.0
+    rejection_reason = Column(Text, nullable=True)
+
+    # Métricas de señal.
+    duration_seconds = Column(Float, nullable=True)
+    rms_energy = Column(Float, nullable=True)
+    peak_amplitude = Column(Float, nullable=True)
+    clipping_detected = Column(Boolean, nullable=False, default=False)
+    clipping_ratio = Column(Float, nullable=True)  # Fracción de tramas recortadas.
+    snr_db = Column(Float, nullable=True)  # Relación señal/ruido estimada.
+    silence_ratio = Column(Float, nullable=True)  # Fracción de tramas casi en cero.
+
+    noise_floor_db = Column(Float, nullable=True)  # Piso de ruido estimado.
+    bandwidth_hz = Column(Float, nullable=True)  # Ancho de banda ocupado aproximado.
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    audio_record = relationship("AudioRecord", back_populates="quality_reports")
+
+
+class BiomarkerFeature(Base):
+    __tablename__ = "biomarker_features"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    audio_record_id = Column(Integer, ForeignKey("audio_records.id", ondelete="CASCADE"), nullable=False)
+    extractor_version = Column(String(100), nullable=False)
+    feature_schema_version = Column(String(100), nullable=False)
+    features_json = Column(Text, nullable=False)
+    missing_features_json = Column(Text, nullable=True)
+    is_partial = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "audio_record_id",
+            "extractor_version",
+            "feature_schema_version",
+            name="uq_audio_feature_version",
+        ),
+    )
+
+    audio_record = relationship("AudioRecord", back_populates="biomarker_feature_sets")
 
 
 # ---------------------------------------------------------------------------
