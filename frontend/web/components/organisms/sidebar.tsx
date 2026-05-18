@@ -23,12 +23,7 @@ export function Sidebar() {
       </nav>
 
       <div className="mt-auto rounded-2xl bg-surface-lowest p-4 shadow-ambient">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <HeartPulse className="h-4 w-4" />
-          <span>{t(locale, "sidebar", "atriumLabel")}</span>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">{t(locale, "sidebar", "atriumDescription")}</p>
-        <div className="mt-3 flex items-center gap-2 text-primary">
+        <div className="flex items-center gap-2 text-primary">
           <Activity className="h-4 w-4" />
           <span className="text-sm font-semibold">{t(locale, "sidebar", "systemReady")}</span>
         </div>

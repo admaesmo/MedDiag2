@@ -41,8 +41,6 @@ const en = {
   sidebar: {
     title: "Medical Diagnostics",
     subtitle: "Clinical Precision Interface",
-    atriumLabel: "Clinical Atrium",
-    atriumDescription: "No hard separators, only tonal hierarchy and spacing.",
     systemReady: "System ready",
   },
   dashboard: {

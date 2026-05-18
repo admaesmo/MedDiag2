@@ -41,8 +41,6 @@ const es = {
   sidebar: {
     title: "Diagnóstico Médico",
     subtitle: "Interfaz de precisión clínica",
-    atriumLabel: "Clinical Atrium",
-    atriumDescription: "Sin separadores rígidos: solo jerarquía tonal y espaciado.",
     systemReady: "Sistema listo",
   },
   dashboard: {
