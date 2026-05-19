@@ -3,8 +3,9 @@ services:
     name: meddiag-api
     env: python
     plan: free
+    branch: main
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    startCommand: "chmod +x start.sh && ./start.sh"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -14,6 +15,25 @@ services:
         value: "./saved_models"
       - key: ALLOWED_ORIGINS
         value: "*"
+      - key: AUTH_PROVIDER
+        value: "local"
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: JWT_ALGORITHM
+        value: "HS256"
+      - key: JWT_EXPIRATION_MINUTES
+        value: "60"
+      - key: STORAGE_PROVIDER
+        value: "local"
+      - key: STORAGE_LOCAL_PATH
+        value: "./storage/audio"
+      - key: MAX_AUDIO_FILE_SIZE_MB
+        value: "25"
+      - key: PYTHONUNBUFFERED
+        value: "1"
 
 databases:
   - name: meddiag-db
+    plan: free
+    ipAllowList: []
+
