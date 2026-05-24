@@ -12,6 +12,7 @@ from app.model_predict import (
     DIABETES_FEATURE_ORDER,
     HEART_FEATURE_ORDER,
     PARK_FEATURE_ORDER,
+    PARKINSON_THRESHOLD,
     predict_diabetes,
     predict_heart,
     predict_parkinson,
@@ -240,3 +241,5 @@ def predict_parkinson_endpoint(payload: ParkinsonRequest, db: Session = Depends(
         positive_msg="La persona puede tener Parkinson, consulte a su médico.",
         negative_msg="La persona no tiene Parkinson.",
     )
+
+

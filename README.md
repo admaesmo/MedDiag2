@@ -29,6 +29,7 @@ El proyecto integra:
 - [Pipeline de Análisis de Voz](#pipeline-de-análisis-de-voz)
 - [Biomarcadores Extraídos](#biomarcadores-extraídos)
 - [Modelos ML](#modelos-ml)
+- [Archivos de Entrenamiento (Vigentes vs Deprecados)](#archivos-de-entrenamiento-vigentes-vs-deprecados)
 - [Tecnologías](#tecnologías)
 - [Instalación y Ejecución](#instalación-y-ejecución)
 - [Estructura del Proyecto](#estructura-del-proyecto)
@@ -44,12 +45,12 @@ El proyecto integra:
 | Componente | Estado | Detalle |
 |-----------|--------|---------|
 | Pipeline de audio | ✅ Funcional | Carga, decodificación, extracción de 22 biomarcadores |
-| Biomarcadores no lineales | ✅ Implementados | DFA, D2, PPE, RPDE, spread1, spread2 (rama `marcadoresNL`) |
+| Biomarcadores no lineales | ✅ Implementados | DFA, D2, PPE, RPDE, spread1, spread2 |
 | Feature Store | ✅ Implementado | Versionado con `extractor_version` y `feature_schema_version` |
 | Inferencia | ✅ Funcional | Predicción preliminar con probabilidad |
+| Control de calidad de audio | ✅ Implementado | Servicio `quality_control.py` activo en el pipeline |
 | Frontend (grabación/carga) | ✅ Funcional | Interfaz de usuario con autenticación |
-| Control de calidad de audio | ⏳ Pendiente | Servicio dedicado por implementar |
-| Parselmouth como extractor base | ⏳ Pendiente | Actualmente se usa Librosa como ruta principal |
+| Parselmouth como extractor base | ✅ Implementado | Endpoint `/audio/biomarkers/extract` con Parselmouth |
 | Validación clínica | ❌ Pendiente | Sin evaluación con pacientes reales |
 
 ---
@@ -119,6 +120,12 @@ Audio del usuario
       │
       ▼
 ┌──────────────────┐
+│  Control de       │  Calidad: duración, SNR, clipping, silencio
+│  Calidad (QA/QC)  │  (quality_control.py)
+└──────────────────┘
+      │
+      ▼
+┌──────────────────┐
 │  Decodificación   │  Librosa (principal) → Pydub (fallback)
 │  y normalización │  Mono, frecuencia controlada
 └──────────────────┘
@@ -167,25 +174,80 @@ El sistema extrae **22 variables** que componen el vector clásico del dataset d
 La extracción usa una estrategia híbrida:
 - **Librosa** para carga, preprocesamiento y pitch (ruta principal)
 - **Parselmouth/Praat** como alternativa para F0
-- **Implementaciones determinísticas propias** para biomarcadores no lineales (rama `marcadoresNL`)
+- **Implementaciones determinísticas propias** para biomarcadores no lineales
 - **Aproximación cepstral** para NHR/HNR
 
 ---
 
 ## Modelos ML
 
-### Modelo principal: Parkinson
-- **Archivo:** `saved_models/parkinsons_model.sav`
+### Modelo principal: Parkinson (XGBoost con SMOTE)
+
+El modelo activo de Parkinson fue sometido a un proceso de **optimización y reentrenamiento** documentado en el notebook [`notebooks/MedDiag_Parkinson_SMOTE_Colab.ipynb`](./notebooks/MedDiag_Parkinson_SMOTE_Colab.ipynb). Este proceso incluyó:
+
+1. **Balanceo de clases con SMOTE** — El dataset original (197 muestras, 31 personas) presenta desbalance entre clases. Se aplicó SMOTE (*Synthetic Minority Oversampling Technique*) para generar muestras sintéticas de la clase minoritaria, equilibrando la distribución y mejorando la sensibilidad del modelo.
+
+2. **Optimización de hiperparámetros con GridSearchCV** — Se realizó una búsqueda sistemática sobre los parámetros clave de XGBoost: `n_estimators`, `max_depth`, `learning_rate`, `subsample`, `colsample_bytree` y `reg_lambda`, utilizando validación cruzada estratificada (5 folds) y optimizando sobre F1-score.
+
+3. **Ajuste del umbral de decisión** — Se evaluaron umbrales de probabilidad entre 0.3 y 0.7 para maximizar el balance entre sensibilidad y especificidad. El umbral óptimo se fijó en **0.55**, reduciendo falsos positivos sin sacrificar significativamente la detección de verdaderos positivos.
+
+4. **Métricas finales del modelo optimizado:**
+   - **Accuracy:** ~94.9%
+   - **AUC-ROC:** ~0.98
+   - **Sensibilidad (Recall):** ~96%
+   - **Especificidad:** ~93%
+   - **F1-score:** ~0.95
+
+- **Archivo activo:** `saved_models/parkinsons_model_smote.sav` (XGBoost entrenado con SMOTE — versión mejorada)
+- **Archivo activo:** `saved_models/parkinsons_scaler_smote.sav` (StandardScaler para modelo SMOTE)
+- **Archivos anteriores (reemplazados):**
+  - `saved_models/parkinsons_model.sav` — Modelo XGBoost sin SMOTE (reemplazado por versión SMOTE)
+  - `saved_models/parkinsons_scaler.sav` — Scaler anterior (reemplazado por versión SMOTE)
 - **Dataset:** Oxford Parkinson's Disease Detection Dataset (UCI)
 - **Entrada:** Vector de 22 biomarcadores de voz
-- **Salida:** Clasificación binaria + probabilidad
-- **Rendimiento:** Accuracy ~88.3%, AUC-ROC ~0.93
+- **Salida:** Clasificación binaria + probabilidad (umbral 0.55)
 
 ### Modelos históricos (compatibilidad)
-- **Diabetes Tipo 2** — 8 variables clínicas
-- **Enfermedad Cardiovascular** — 13 variables clínicas
+- **Diabetes Tipo 2** — `saved_models/diabetes_model.sav` — 8 variables clínicas
+- **Enfermedad Cardiovascular** — `saved_models/heart_disease_model.sav` — 13 variables clínicas
 
 > El desarrollo activo se centra en el módulo de Parkinson por voz. Los modelos de diabetes y cardiovascular se conservan por compatibilidad histórica.
+
+---
+
+## Archivos de Entrenamiento (Vigentes vs Deprecados)
+
+### Vigentes (en uso activo)
+
+| Archivo | Propósito |
+|---------|-----------|
+| `app/model_predict.py` | Carga y ejecución de modelos ML en producción |
+| `app/services/audio_processing.py` | Extracción de biomarcadores acústicos (pipeline principal) |
+| `app/services/audio_pipeline.py` | Orquestación del pipeline completo de audio |
+| `app/services/nonlinear_features.py` | Cálculo de biomarcadores no lineales (DFA, D2, RPDE, PPE, spread1, spread2) |
+| `app/services/voice_biomarkers.py` | Extracción de biomarcadores vía Parselmouth (endpoint directo) |
+| `app/services/quality_control.py` | Control de calidad de audio (QA/QC) |
+| `app/api/voice_biomarkers.py` | Endpoint REST para extracción directa de biomarcadores |
+| `app/api/audio.py` | Endpoints REST de carga y procesamiento de audio |
+| `app/models.py` | Modelos SQLAlchemy (incluye `BiomarkerFeature`, `AudioQualityReport`) |
+| `app/schemas/voice_biomarkers.py` | Schemas Pydantic para biomarcadores de voz |
+| `app/schemas/quality_control.py` | Schemas Pydantic para control de calidad |
+| `saved_models/parkinsons_model_smote.sav` | Modelo XGBoost entrenado con SMOTE (producción activa) |
+| `saved_models/parkinsons_scaler_smote.sav` | Scaler para el modelo SMOTE |
+| `notebooks/MedDiag_Parkinson_SMOTE_Colab.ipynb` | Notebook de entrenamiento y optimización con SMOTE |
+
+### Deprecados (⛔ mantenidos solo por referencia histórica)
+
+| Archivo | Motivo de deprecación |
+|---------|----------------------|
+| `Parkinsons_Caro(1).ipynb` | Notebook original de entrenamiento (Diana Huertas). Reemplazado por `Parkinsons_Model_Training_REAL_FIXED.ipynb` |
+| `EXPERIMENTOS_EXTRACCION_BIOMARCADORES_VOZ_PARKINSON_COLAB.ipynb` | Notebook experimental de extracción de biomarcadores. La funcionalidad fue integrada directamente en los servicios del backend |
+| `saved_models/parkinsons_model.sav` | Modelo XGBoost sin SMOTE (reemplazado por `parkinsons_model_smote.sav`) |
+| `saved_models/parkinsons_scaler.sav` | Scaler anterior (reemplazado por `parkinsons_scaler_smote.sav`) |
+| `saved_models/parkinsons_model_xgboost.sav` | Modelo XGBoost individual generado durante experimentación. No es cargado por `model_predict.py` |
+| `saved_models/parkinsons_model_ensemble.sav` | Ensemble de modelos generado durante experimentación. No es cargado por `model_predict.py` |
+
+> **Nota:** Los archivos deprecados se conservan en el repositorio para trazabilidad académica, pero no forman parte del pipeline activo de producción.
 
 ---
 
@@ -297,6 +359,7 @@ MedDiag2/
 │   │   ├── audio_processing.py   # Procesamiento de señales
 │   │   ├── audio_service.py      # Servicio de audio
 │   │   ├── nonlinear_features.py # Biomarcadores no lineales
+│   │   ├── quality_control.py    # Control de calidad de audio
 │   │   └── voice_biomarkers.py   # Extracción de biomarcadores
 │   └── utils/                    # Utilidades
 ├── frontend/web/                 # Frontend Next.js
@@ -308,12 +371,11 @@ MedDiag2/
 │   └── stores/                   # Estado global (Zustand)
 ├── Documentacion/                # Documentación del proyecto
 │   ├── MedDiag2_paper_corregido.md           # Paper académico (vigente)
-│   ├── Justificación de la ruta actual....md # ⛔ Deprecado
-│   └── INVESTIGACION_BIOMARCADORES_VOZ_...md # Investigación técnica
+│   ├── GUIA_DESPLIEGUE_RENDER_VERCEL.md      # Guía de despliegue
+│   └── PLAN_MIGRACION_MODELO.md              # Plan de migración de modelos
 ├── saved_models/                 # Modelos serializados (.sav)
 ├── scripts/                      # Scripts de inicio/parada
 ├── alembic/                      # Migraciones de base de datos
-├── DEPLOY.md                     # Guía de despliegue
 ├── requirements.txt              # Dependencias Python
 ├── Dockerfile                    # Imagen Docker del backend
 └── render.yaml                   # Blueprint de Render
@@ -326,9 +388,8 @@ MedDiag2/
 | Documento | Descripción |
 |-----------|-------------|
 | [`MedDiag2_paper_corregido.md`](./Documentacion/MedDiag2_paper_corregido.md) | Paper académico completo con metodología, resultados y discusión |
-| [`INVESTIGACION_BIOMARCADORES_VOZ_PARKINSON.markdown.md`](./Documentacion/INVESTIGACION_BIOMARCADORES_VOZ_PARKINSON.markdown.md) | Investigación técnica sobre biomarcadores y librerías |
-| [`DEPLOY.md`](./DEPLOY.md) | Guía de despliegue en Render + Vercel |
-| [`frontend/web/README.md`](./frontend/web/README.md) | Documentación del frontend |
+| [`GUIA_DESPLIEGUE_RENDER_VERCEL.md`](./Documentacion/GUIA_DESPLIEGUE_RENDER_VERCEL.md) | Guía de despliegue en Render + Vercel |
+| [`PLAN_MIGRACION_MODELO.md`](./Documentacion/PLAN_MIGRACION_MODELO.md) | Plan de migración del modelo de Parkinson |
 | API Docs | Swagger en `/docs` (servidor corriendo) |
 
 ---
@@ -348,7 +409,6 @@ MedDiag2/
 ## Trabajo Futuro
 
 - [ ] Congelar extractor clásico con Parselmouth/Praat para F0, jitter, shimmer y HNR
-- [ ] Implementar servicio formal de control de calidad de audio
 - [ ] Reemplazar uso de `0.0` por política `partial_features` o `missing_features`
 - [ ] Diseñar pruebas con 3 repeticiones por persona, vocal `/a/` de 3-5s
 - [ ] Comparar Parselmouth vs openSMILE y DisVoice

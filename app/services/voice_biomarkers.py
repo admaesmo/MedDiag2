@@ -32,7 +32,10 @@ try:
 except ImportError:  # pragma: no cover - dependency is declared in requirements.txt
     PYDUB_AVAILABLE = False
 
-from app.model_predict import PARK_FEATURE_ORDER, predict_parkinson
+from app.model_predict import (
+    PARK_FEATURE_ORDER,
+    predict_parkinson,
+)
 from app.services.audio_processing import AudioProcessingError, extract_features_from_audio
 from app.utils.validators import validate_required_features
 
@@ -308,3 +311,4 @@ def run_parkinson_direct_inference(features: Dict[str, float]) -> Dict[str, obje
         "probability": float(probability),
         "message": PARKINSON_POSITIVE_MESSAGE if prediction == 1 else PARKINSON_NEGATIVE_MESSAGE,
     }
+

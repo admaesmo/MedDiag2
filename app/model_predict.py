@@ -1,15 +1,15 @@
 """
 Módulo de predicción — carga modelos serializados y ejecuta inferencia.
 
-El modelo de Parkinson (XGBoost) fue entrenado sobre datos escalados con
-StandardScaler.  Este módulo aplica el scaler antes de predecir para
+El modelo de Parkinson (XGBoost con SMOTE) fue entrenado sobre datos escalados
+con StandardScaler.  Este módulo aplica el scaler antes de predecir para
 mantener la consistencia con el contrato de entrenamiento.
 
 Archivos esperados en ``saved_models/``:
-    - parkinsons_model.sav       (XGBoost entrenado sobre 22 features escaladas)
-    - parkinsons_scaler.sav      (StandardScaler ajustado sobre las 22 features)
-    - diabetes_model.sav         (modelo de diabetes, sin scaler)
-    - heart_disease_model.sav    (modelo cardíaco, sin scaler)
+    - parkinsons_model_smote.sav   (XGBoost entrenado con SMOTE — versión mejorada)
+    - parkinsons_scaler_smote.sav  (StandardScaler para modelo SMOTE)
+    - diabetes_model.sav           (modelo de diabetes, sin scaler)
+    - heart_disease_model.sav      (modelo cardíaco, sin scaler)
 """
 
 from __future__ import annotations
@@ -85,24 +85,25 @@ def _load_model(filename: str):
 
 diabetes_model = _load_model("diabetes_model.sav")
 heart_model = _load_model("heart_disease_model.sav")
-parkinsons_model = _load_model("parkinsons_model.sav")
 
 # ---------------------------------------------------------------------------
-# Scaler de Parkinson (necesario porque el SVC fue entrenado con datos
-# estandarizados).  Si no existe, se emite una advertencia y se infiere
-# sin escalar (comportamiento legacy).
+# Modelo de Parkinson — XGBoost entrenado con SMOTE (balanceo de clases)
 # ---------------------------------------------------------------------------
+
+PARKINSON_THRESHOLD = 0.55  # umbral ajustado: mejor balance sensibilidad/especificidad
 
 try:
-    parkinsons_scaler = _load_model("parkinsons_scaler.sav")
+    parkinsons_model = _load_model("parkinsons_model_smote.sav")
+    parkinsons_scaler = _load_model("parkinsons_scaler_smote.sav")
     logger.info(
-        "parkinsons_scaler.sav cargado — las features se escalarán antes de predecir."
+        "parkinsons_model_smote.sav + scaler cargados — modelo SMOTE listo."
     )
 except (FileNotFoundError, Exception):
+    parkinsons_model = None
     parkinsons_scaler = None
-    logger.warning(
-        "parkinsons_scaler.sav no encontrado — la inferencia se ejecutará "
-        "sin escalar.  Los resultados pueden ser incorrectos."
+    logger.error(
+        "parkinsons_model_smote.sav no encontrado — la inferencia de Parkinson "
+        "no estará disponible."
     )
 
 # ---------------------------------------------------------------------------
@@ -136,7 +137,6 @@ def _predict_binary(
     if hasattr(model, "predict_proba"):
         proba = float(model.predict_proba(x)[0][1])
     else:
-        # Respaldo para modelos como SVC(probability=False).
         proba = 1.0 if label == 1 else 0.0
 
     return label, proba
@@ -155,17 +155,33 @@ def predict_heart(features: Dict[str, float]) -> Tuple[int, float]:
     return _predict_binary(heart_model, HEART_FEATURE_ORDER, features)
 
 
-def predict_parkinson(features: Dict[str, float]) -> Tuple[int, float]:
+def predict_parkinson(
+    features: Dict[str, float],
+    threshold: float = PARKINSON_THRESHOLD,
+) -> Tuple[int, float]:
     """
-    Predice Parkinson usando el modelo SVC con escalado previo.
+    Predice Parkinson usando XGBoost entrenado con SMOTE + umbral ajustable.
 
-    El modelo fue entrenado sobre las 22 features del dataset UCI Oxford
-    estandarizadas con StandardScaler.  Este paso de escalado se replica
-    aquí usando ``parkinsons_scaler.sav``.
+    El modelo fue entrenado con balanceo de clases (SMOTE) sobre las 22
+    features del dataset UCI Oxford, estandarizadas con StandardScaler.
+
+    Parameters
+    ----------
+    features : Dict[str, float]
+        Las 22 características del dataset UCI Oxford.
+    threshold : float, optional
+        Umbral de probabilidad para clasificación (default 0.55).
+
+    Returns
+    -------
+    Tuple[int, float]
+        (predicción 0/1, probabilidad de Parkinson)
     """
-    return _predict_binary(
-        parkinsons_model,
-        PARK_FEATURE_ORDER,
-        features,
-        scaler=parkinsons_scaler,
-    )
+    if parkinsons_model is None or parkinsons_scaler is None:
+        raise RuntimeError("Modelo de Parkinson no disponible.")
+
+    x = np.array([[float(features[f]) for f in PARK_FEATURE_ORDER]])
+    x = parkinsons_scaler.transform(x)
+    proba = float(parkinsons_model.predict_proba(x)[0][1])
+    label = 1 if proba >= threshold else 0
+    return label, proba

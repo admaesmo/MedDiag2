@@ -19,7 +19,10 @@ ALLOWED_MIME_TYPES = {
     "audio/mpeg",
     "audio/mp4",
     "audio/ogg",
+    "application/ogg",
     "audio/flac",
+    "audio/x-m4a",
+    "application/octet-stream",
 }
 
 MAX_FILE_SIZE = int(os.getenv("MAX_AUDIO_FILE_SIZE_MB", "25")) * 1024 * 1024  # bytes
@@ -139,7 +142,9 @@ _MIME_TO_EXT = {
     "audio/mpeg": ".mp3",
     "audio/mp4": ".m4a",
     "audio/ogg": ".ogg",
+    "application/ogg": ".ogg",
     "audio/flac": ".flac",
+    "audio/x-m4a": ".m4a",
 }
 
 

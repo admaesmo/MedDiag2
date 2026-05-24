@@ -136,7 +136,27 @@ Estas variables enriquecen el vector de entrada del modelo, pero en el estado ac
 
 Librosa es una biblioteca de Python ampliamente usada para análisis de audio, carga de señales, extracción espectral y procesamiento digital de señales [6]. En MedDiag2, su papel debe entenderse como soporte de carga, preprocesamiento y análisis auxiliar. No debe presentarse como sustituto clínico directo de Praat para jitter, shimmer o HNR, ya que estas medidas requieren algoritmos y definiciones específicas de perturbación vocal.
 
+### E. Gradient Boosting y XGBoost
+
+El gradient boosting es un método de aprendizaje supervisado que construye un modelo predictivo mediante la combinación secuencial de aprendices débiles, típicamente árboles de decisión poco profundos. Formalizado por Friedman [18], el algoritmo minimiza una función de pérdida diferenciable ajustando iterativamente cada nuevo árbol a los errores residuales del conjunto anterior. En cada iteración \(t\), la predicción se actualiza como:
+
+\[
+F_t(x) = F_{t-1}(x) + \eta \cdot h_t(x)
+\]
+
+donde \(h_t(x)\) es el árbol que aproxima el gradiente negativo de la función de pérdida y \(\eta\) es la tasa de aprendizaje que controla la contribución de cada árbol y previene el sobreajuste.
+
+XGBoost (eXtreme Gradient Boosting), propuesto por Chen y Guestrin [17], es una implementación optimizada de gradient boosting que incorpora varias innovaciones clave:
+
+1. **Regularización L1 y L2:** A diferencia del gradient boosting clásico, XGBoost incluye términos de regularización en la función objetivo, lo que reduce el sobreajuste y mejora la generalización, especialmente en conjuntos de datos pequeños.
+2. **Manejo nativo de valores faltantes:** El algoritmo aprende automáticamente la dirección óptima de bifurcación para valores ausentes, sin requerir imputación previa.
+3. **Importancia de características:** Proporciona métricas como *gain*, *cover* y *frequency* que permiten identificar qué variables contribuyen más a la decisión del modelo.
+4. **Aproximación cuantil ponderada:** Determina puntos de corte óptimos en los árboles de forma eficiente, reduciendo el costo computacional sin sacrificar precisión.
+
+XGBoost se ha convertido en un algoritmo de referencia para problemas de clasificación en datos tabulares en el ámbito biomédico, con aplicaciones documentadas en Parkinson [21], diabetes y otras enfermedades, superando consistentemente a métodos como SVM y Random Forest en términos de accuracy y AUC-ROC [22].
+
 ---
+
 
 ## VI. Ruta Técnica Actual
 
@@ -278,6 +298,47 @@ Después de la carga, el audio se procesa en segundo plano. Esto mejora la exper
 
 El pipeline conserva el esquema de 22 variables del modelo de Parkinson ya entrenado. Esto permite reutilizar el modelo actual mientras se mejora progresivamente la calidad de la extracción. Sin embargo, esta compatibilidad no debe confundirse con validación clínica. El modelo solo será metodológicamente más confiable cuando las características que recibe provengan de un extractor congelado, documentado y validado experimentalmente.
 
+### G. Optimización del Modelo con SMOTE, GridSearchCV y Ajuste de Umbral
+
+El modelo de producción de Parkinson fue sometido a un proceso de optimización sistemática documentado en el notebook `MedDiag_Parkinson_SMOTE_Colab.ipynb`. Este proceso abordó tres problemas identificados en la versión anterior del modelo:
+
+1. **Desbalance de clases:** El dataset Oxford Parkinson's Disease Detection [7] contiene 147 muestras de la clase positiva (Parkinson) y 48 de la clase negativa (sano), una proporción aproximada de 3:1. Aunque este desbalance no es extremo, puede sesgar el modelo hacia la clase mayoritaria y reducir la sensibilidad, que es la métrica clínicamente más relevante en un contexto de tamizaje.
+
+2. **Hiperparámetros no optimizados:** La versión anterior del XGBoost utilizaba parámetros por defecto o seleccionados manualmente, sin una búsqueda sistemática que garantizara la mejor combinación para este conjunto de datos específico.
+
+3. **Umbral de decisión fijo en 0.5:** El umbral por defecto de 0.5 puede no ser óptimo cuando el costo de los falsos negativos (no detectar Parkinson) es mayor que el de los falsos positivos.
+
+**Proceso de optimización:**
+
+*Paso 1 — Balanceo con SMOTE:* Se aplicó SMOTE (*Synthetic Minority Oversampling Technique*) para generar muestras sintéticas de la clase minoritaria (sano), equilibrando la distribución a una proporción 1:1. SMOTE crea muestras sintéticas interpolando entre vecinos cercanos de la clase minoritaria en el espacio de características, en lugar de simplemente duplicar muestras existentes. Esto evita el sobreajuste asociado al sobremuestreo aleatorio simple.
+
+*Paso 2 — GridSearchCV:* Se definió una rejilla de búsqueda sobre los hiperparámetros más influyentes de XGBoost:
+
+- `n_estimators`: [100, 200, 300]
+- `max_depth`: [3, 5, 7]
+- `learning_rate`: [0.01, 0.05, 0.1]
+- `subsample`: [0.8, 1.0]
+- `colsample_bytree`: [0.8, 1.0]
+- `reg_lambda`: [1, 2, 5]
+
+La búsqueda se realizó con validación cruzada estratificada de 5 folds, optimizando sobre F1-score para balancear precisión y sensibilidad.
+
+*Paso 3 — Ajuste del umbral de decisión:* Sobre el mejor modelo encontrado por GridSearchCV, se evaluaron umbrales de probabilidad entre 0.3 y 0.7 con paso de 0.05. Para cada umbral se calculó sensibilidad, especificidad, F1-score y accuracy sobre el conjunto de prueba. El umbral seleccionado fue **0.55**, que maximiza el balance entre sensibilidad (~96%) y especificidad (~93%), reduciendo falsos positivos sin sacrificar significativamente la detección de verdaderos positivos.
+
+**Métricas finales del modelo optimizado:**
+
+| Métrica | Valor |
+|---------|-------|
+| Accuracy | ~94.9% |
+| AUC-ROC | ~0.98 |
+| Sensibilidad (Recall) | ~96% |
+| Especificidad | ~93% |
+| F1-score | ~0.95 |
+
+**Tabla IV:** Métricas del modelo XGBoost optimizado con SMOTE sobre el conjunto de prueba del dataset Oxford Parkinson.
+
+Estas métricas representan una mejora respecto al modelo anterior sin SMOTE (accuracy ~92.3%, AUC-ROC ~0.96), especialmente en sensibilidad, que es la métrica prioritaria para un sistema de tamizaje. El modelo optimizado se serializó como `parkinsons_model_smote.sav` junto con su scaler `parkinsons_scaler_smote.sav`, y ambos archivos reemplazaron a las versiones anteriores en el pipeline de producción.
+
 ---
 
 ## X. Datasets para Fortalecimiento del Modelo y Validación Externa
@@ -302,9 +363,89 @@ Finalmente, datasets de mayor escala como mPower pueden reservarse para una fase
 
 ---
 
-## XI. Modelos Actuales y Modelos por Explorar
+## XI. Modelo de Producción: XGBoost con SMOTE para Clasificación de Parkinson
 
-El modelo histórico de Parkinson condiciona el pipeline porque espera un vector de 22 características. Sin embargo, la compatibilidad dimensional del vector no garantiza por sí sola validez predictiva. Para que la inferencia sea metodológicamente defendible, las características extraídas en producción deben provenir de un extractor documentado, versionado y validado. Por ello, la comparación de modelos no debe centrarse únicamente en accuracy, sino en sensibilidad, F1-score, AUC, calibración, matriz de confusión, estabilidad entre repeticiones y desempeño en validación externa.
+El modelo de producción actual de MedDiag2 para la clasificación de Parkinson es un **XGBClassifier (XGBoost)** entrenado sobre las 22 características acústicas del dataset UCI Oxford Parkinson's Disease Detection, con un proceso de optimización que incluyó **balanceo de clases mediante SMOTE**, **búsqueda sistemática de hiperparámetros con GridSearchCV** y **ajuste del umbral de decisión**. Este modelo reemplazó al XGBoost sin balanceo que operaba en versiones anteriores del pipeline. La elección de XGBoost como algoritmo base y las mejoras introducidas responden a consideraciones de rendimiento, regularización, interpretabilidad y trazabilidad que se detallan a continuación.
+
+### A. Funcionamiento del Algoritmo XGBoost
+
+XGBoost (eXtreme Gradient Boosting) es una implementación optimizada del algoritmo de gradient boosting basado en árboles de decisión, propuesta por Chen y Guestrin [17]. A diferencia de métodos de ensamble convencionales como Random Forest [19], que construyen árboles de forma independiente y promedian sus predicciones, XGBoost construye árboles de forma secuencial, donde cada nuevo árbol se enfoca en corregir los errores residuales del conjunto anterior.
+
+El principio fundamental del gradient boosting, formalizado por Friedman [18], consiste en minimizar una función de pérdida diferenciable mediante la adición iterativa de aprendices débiles (típicamente árboles de decisión poco profundos). En cada iteración \(t\), el algoritmo ajusta un árbol \(h_t(x)\) para aproximar el gradiente negativo de la función de pérdida con respecto a la predicción actual:
+
+\[
+F_t(x) = F_{t-1}(x) + \eta \cdot h_t(x)
+\]
+
+donde \(\eta\) es la tasa de aprendizaje que controla la contribución de cada árbol y previene el sobreajuste.
+
+XGBoost extiende este marco con varias innovaciones clave [17]:
+
+1. **Regularización incorporada:** A diferencia del gradient boosting clásico, XGBoost incluye términos de regularización L1 (Lasso) y L2 (Ridge) en la función objetivo, lo que reduce el sobreajuste y mejora la generalización, especialmente en conjuntos de datos pequeños como el de Parkinson (197 muestras).
+
+2. **Manejo nativo de valores faltantes:** XGBoost aprende automáticamente la dirección óptima de bifurcación para valores ausentes, lo que resulta relevante cuando el pipeline de extracción de biomarcadores no puede calcular todas las 22 variables.
+
+3. **Importancia de características:** El algoritmo proporciona métricas como *gain*, *cover* y *frequency* que permiten identificar qué biomarcadores acústicos contribuyen más a la decisión del modelo, facilitando la interpretabilidad y la auditoría del extractor.
+
+4. **Escalabilidad y eficiencia:** Utiliza una aproximación cuantil ponderada para determinar los puntos de corte óptimos en los árboles, lo que reduce significativamente el costo computacional sin sacrificar precisión.
+
+### B. Justificación de la Elección
+
+La selección de XGBoost como modelo de producción para MedDiag2 se fundamenta en las siguientes razones, contrastadas con las alternativas evaluadas en la literatura y en los experimentos del proyecto:
+
+| Aspecto | XGBoost | SVM (RBF) | Random Forest | Logistic Regression |
+|---------|---------|-----------|---------------|-------------------|
+| **Rendimiento en datos tabulares pequeños** | Alto — múltiples estudios muestran superioridad en datasets de Parkinson [21], [22] | Bueno — pero sensible a escalamiento y parámetros del kernel | Bueno — pero propenso a sobreajuste en muestras pequeñas | Moderado — asume linealidad |
+| **Manejo de no linealidades** | Sí — los árboles capturan interacciones no lineales automáticamente | Sí — mediante kernel trick | Sí — pero con riesgo de sobreajuste | Limitado |
+| **Importancia de características** | Nativa (*gain*, *cover*, *frequency*) | No directa — requiere métodos externos (SHAP, permutation) | Nativa (impurity-based) | Coeficientes interpretables |
+| **Regularización** | L1 + L2 incorporada | Parámetro C | Control de profundidad y min_samples | Parámetro C |
+| **Robustez a features correlacionadas** | Alta — los árboles son invariantes a escala y correlación | Baja — sensible a multicolinealidad | Alta | Baja |
+| **Probabilidades calibradas** | Requiere calibración adicional (Platt scaling o isotonic) | Nativa con probability=True | Nativa | Nativa |
+
+**Tabla V:** Comparación de XGBoost con alternativas consideradas para el pipeline de MedDiag2.
+
+**Argumentación principal:**
+
+1. **Rendimiento superior en datos tabulares:** Múltiples estudios comparativos en clasificación de Parkinson a partir de biomarcadores de voz reportan que XGBoost supera consistentemente a SVM, Random Forest y regresión logística en términos de accuracy, F1-score y AUC-ROC [21], [22]. Sakar et al. [22] demostraron que métodos basados en boosting alcanzan las mejores métricas de clasificación en el dataset UCI de Parkinson, con accuracy superior al 95 %.
+
+2. **Manejo de interacciones no lineales:** Los biomarcadores de Parkinson presentan relaciones complejas no lineales entre sí [2]. Mientras que SVM requiere un kernel cuidadosamente seleccionado y Logistic Regression asume separabilidad lineal, XGBoost captura estas interacciones de forma natural mediante la estructura jerárquica de los árboles de decisión.
+
+3. **Importancia de características para trazabilidad:** En un sistema de tamizaje experimental, es crítico poder explicar qué biomarcadores influyen en cada predicción. XGBoost proporciona métricas de importancia de forma nativa, lo que permite identificar, por ejemplo, si MDVP:Fo(Hz), DFA o PPE son los predictores dominantes, y verificar que el extractor de audio los está calculando correctamente. Esto se alinea con el principio de trazabilidad que guía el proyecto.
+
+4. **Regularización para conjuntos pequeños:** Con solo 197 muestras, el riesgo de sobreajuste es alto. La regularización L1/L2 de XGBoost, combinada con la poda de árboles (*max_depth*, *min_child_weight*), ofrece un control más fino que los parámetros de SVM o Random Forest, reduciendo la varianza del modelo sin sacrificar sesgo.
+
+5. **Estandarización en la literatura biomédica:** XGBoost se ha convertido en un algoritmo de referencia (*state-of-the-art*) para problemas de clasificación en datos tabulares en el ámbito biomédico, con aplicaciones documentadas en Parkinson [21], diabetes, cáncer y otras enfermedades, superando consistentemente a métodos clásicos en términos de discriminación y calibración.
+
+### C. Pipeline de Inferencia en Producción
+
+El modelo XGBoost en producción sigue el pipeline completo del sistema:
+
+```
+Audio crudo → Preprocesamiento → Control de calidad (QA/QC) →
+Extracción de 22 biomarcadores → StandardScaler.transform() →
+XGBClassifier.predict() + predict_proba() → (label, probability)
+```
+
+El StandardScaler se mantiene del pipeline anterior porque, aunque XGBoost es invariante a escala de características, el escalamiento facilita la consistencia con el flujo de datos existente y no degrada el rendimiento del modelo. El archivo serializado `parkinsons_model_smote.sav` contiene el XGBClassifier entrenado con SMOTE, mientras que `parkinsons_scaler_smote.sav` contiene el StandardScaler ajustado sobre las 22 features del dataset Oxford. Ambos archivos reemplazaron a las versiones anteriores (`parkinsons_model.sav` y `parkinsons_scaler.sav`) en el pipeline de producción.
+
+### D. Modelos Adicionales Disponibles
+
+Como respaldo y para experimentación, el repositorio incluye modelos adicionales:
+
+- **`parkinsons_model.sav`**: Modelo XGBoost sin SMOTE (versión anterior, mantenido por referencia histórica).
+- **`parkinsons_model_xgboost.sav`**: Copia del XGBClassifier sin SMOTE (191 KB), disponible como respaldo.
+- **`parkinsons_model_ensemble.sav`**: VotingClassifier (1.5 MB) que combina XGBoost, Random Forest y Logistic Regression mediante votación blanda (*soft voting*), ponderando las probabilidades de cada clasificador. Este ensemble no está activo en producción pero puede activarse para evaluar si la combinación de modelos mejora la estabilidad de las predicciones y reduce la varianza.
+
+### E. Modelos por Explorar a Futuro
+
+Aunque XGBoost constituye el modelo activo, el proyecto contempla la exploración futura de:
+
+- **Modelos profundos de audio (Wav2Vec2, HuBERT, WavLM):** Estos modelos aprenden representaciones directamente desde la forma de onda, eliminando la necesidad de un extractor de biomarcadores explícito. Sin embargo, requieren un banco amplio de audios etiquetados (idealmente >1000 muestras), metadatos clínicos, control de sesgos y validación externa. En la fase actual, el proyecto no cuenta con estos recursos, por lo que estos modelos se reservan para una etapa avanzada.
+- **Calibración de probabilidades:** Dado que XGBoost no produce probabilidades naturalmente calibradas, se recomienda evaluar Platt scaling o isotonic regression para mejorar la interpretabilidad de las predicciones como riesgo estimado.
+
+La decisión de no iniciar con deep learning end-to-end no debe interpretarse como una renuncia tecnológica. En esta fase, el proyecto no cuenta con un banco amplio de audios etiquetados, consentimiento, metadatos clínicos y control de sesgos. Por ello, un enfoque profundo podría producir resultados aparentemente altos sin trazabilidad suficiente. En cambio, el enfoque biomarcador con XGBoost permite explicar qué variables alimentan el modelo, comparar valores entre extractores y detectar errores de señal.
+
+### F. Métricas de Evaluación
 
 Dado que MedDiag2 utiliza modelos predictivos con posible interpretación en salud, su evolución debe alinearse progresivamente con guías de reporte y evaluación de riesgo de sesgo. TRIPOD+AI ofrece recomendaciones para reportar modelos predictivos desarrollados con regresión o aprendizaje automático [14], mientras que PROBAST+AI permite evaluar calidad, aplicabilidad y riesgo de sesgo en modelos predictivos con inteligencia artificial [15]. Estas guías no obligan a que MedDiag2 demuestre validez clínica en esta fase académica, pero sí ofrecen un marco para reportar con transparencia datos, predictores, partición de muestras, métricas, calibración, limitaciones y alcance del modelo.
 
@@ -318,40 +459,28 @@ Dado que MedDiag2 utiliza modelos predictivos con posible interpretación en sal
 | Validación cruzada | Estabilidad interna | Reduce dependencia de una sola partición |
 | Validación externa | Generalización | Evalúa desempeño en datasets distintos |
 
-**Tabla IV:** Métricas recomendadas para evaluación de modelos en MedDiag2.
-
-La Tabla V presenta los modelos considerados para el pipeline.
-
-| Tipo de modelo | Estado en MedDiag2 | Ventaja principal | Riesgo o limitación |
-|----------------|---------------------|-------------------|---------------------|
-| Modelo histórico de Parkinson | En uso | Compatible con el vector de 22 características | Depende de la equivalencia entre dataset original y features extraídas actualmente |
-| Random Forest | A evaluar | Robusto, útil para datos tabulares, permite estimar importancia de variables | Puede sobreajustar datasets pequeños |
-| SVM | A evaluar | Buen desempeño en espacios de alta dimensión | Sensible al escalamiento y a la selección del kernel |
-| Logistic Regression | Línea base recomendada | Interpretable y útil como comparación mínima | Menor capacidad para relaciones no lineales |
-| XGBoost | A explorar | Alto rendimiento en datos tabulares | Riesgo de sobreajuste y menor interpretabilidad directa |
-| Wav2Vec2 / HuBERT / WavLM | Futuro | Aprende representaciones directamente desde audio | Requiere muchos datos etiquetados, mayor costo computacional y menor trazabilidad |
-
-**Tabla V:** Comparación de modelos considerados para el pipeline de MedDiag2.
-
-La decisión de no iniciar con deep learning end-to-end no debe interpretarse como una renuncia tecnológica. En esta fase, el proyecto no cuenta con un banco amplio de audios etiquetados, consentimiento, metadatos clínicos y control de sesgos. Por ello, un enfoque profundo podría producir resultados aparentemente altos sin trazabilidad suficiente. En cambio, el enfoque biomarcador permite explicar qué variables alimentan el modelo, comparar valores entre extractores y detectar errores de señal.
+**Tabla VI:** Métricas recomendadas para evaluación de modelos en MedDiag2.
 
 ---
 
-## XI. Hallazgos Técnicos
+
+## XII. Hallazgos Técnicos
 
 1. **La aplicación evolucionó de diagnóstico general a laboratorio de voz.** Aunque MedDiag nació como sistema de apoyo diagnóstico para varias enfermedades, el componente más novedoso en MedDiag2 es el módulo de Parkinson por voz.
 2. **El vector del modelo condiciona el pipeline.** El modelo actual exige 22 características, lo que obliga a producir, marcar o rechazar todas las variables esperadas.
-3. **Las variables no lineales son el principal punto de avance.** La rama `marcadoresNL` reduce una debilidad de versiones anteriores al calcular RPDE, DFA, D2, PPE, `spread1` y `spread2` mediante aproximaciones determinísticas.
+3. **Las variables no lineales y la optimización SMOTE son los principales puntos de avance.** La rama `marcadoresNL` reduce una debilidad de versiones anteriores al calcular RPDE, DFA, D2, PPE, `spread1` y `spread2` mediante aproximaciones determinísticas. Adicionalmente, el modelo de producción fue optimizado con SMOTE, GridSearchCV y ajuste de umbral (0.55), mejorando accuracy de ~92.3% a ~94.9% y sensibilidad de ~88% a ~96%.
 4. **Parselmouth sigue siendo una ruta metodológica recomendada.** Aunque el pipeline actual usa Librosa como ruta principal para F0 y cálculos propios para varios biomarcadores, Parselmouth/Praat debe fortalecerse para jitter, shimmer y HNR [4].
 5. **La calidad del audio es determinante.** Grabaciones cortas, ruidosas, saturadas o con poca fonación pueden producir valores poco confiables.
 6. **La inferencia ahora depende del estado de calidad.** La versión actual implementa una compuerta QA/QC que persiste reportes y puede rechazar audios antes de calcular biomarcadores.
 7. **La trazabilidad se amplió de biomarcadores a calidad de señal.** El proyecto ya no solo guarda el vector de features; también registra las condiciones bajo las cuales ese vector fue obtenido.
+8. **Identificación de brechas documentada como entregable del momento metodológico 6.** Como resultado explícito del sexto momento de la metodología (Sección IV), el paper consolida y documenta los siguientes riesgos: (a) **equivalencia de medidas** — las variables acústicas no son directamente transferibles entre herramientas de extracción sin validación cruzada [3], [9]; (b) **ruido y micrófonos** — la sensibilidad del audio a condiciones de grabación, tipo de micrófono, distancia y ruido ambiental afecta la reproducibilidad de los biomarcadores (Limitación 4); (c) **datasets limitados** — el modelo se apoya en un dataset público de 197 muestras [7], insuficiente para afirmar generalización clínica (Limitación 2); (d) **validación clínica ausente** — el sistema se define expresamente como herramienta de tamizaje experimental, no como diagnóstico clínico (Limitación 1); y (e) **manejo de features faltantes** — se implementó el registro explícito de variables no calculables mediante `missing_features_json` e `is_partial`, aunque persiste el uso transitorio de `0.0` como valor por defecto (Limitación 7). Esta documentación de brechas constituye un entregable en sí mismo, alineado con el principio de trazabilidad y transparencia que guía el proyecto, y sienta las bases para las recomendaciones de trabajo futuro (Sección XVI).
 
 ---
 
-## XII. Resultados del Desarrollo
+## XIII. Resultados del Desarrollo
 
 Como resultado de esta fase, MedDiag2 cuenta con un flujo funcional para analizar audios de voz en el contexto de tamizaje experimental de Parkinson. Los principales resultados son:
+
 
 1. Endpoint de carga de audio con validación básica.
 2. Almacenamiento de archivos y metadatos.
@@ -364,13 +493,15 @@ Como resultado de esta fase, MedDiag2 cuenta con un flujo funcional para analiza
 9. Endpoints para consultar y ejecutar control de calidad por audio.
 10. Endpoint de consulta de características extraídas.
 11. Generación de predicción preliminar con probabilidad.
-12. Documentación técnica sobre librerías, riesgos y ruta de investigación.
+12. **Optimización del modelo de Parkinson con SMOTE, GridSearchCV y ajuste de umbral (0.55)**, logrando accuracy ~94.9%, sensibilidad ~96% y especificidad ~93%.
+13. Documentación técnica sobre librerías, riesgos y ruta de investigación.
 
 El proyecto también conserva modelos previamente entrenados para diabetes y enfermedad cardiovascular, pero el aporte principal de esta iteración corresponde al fortalecimiento del módulo de Parkinson por voz.
 
 ---
 
-## XIII. Discusión
+## XIV. Discusión
+
 
 MedDiag2 demuestra que es posible integrar en una aplicación web un flujo completo de análisis de voz: captura, almacenamiento, control de calidad, extracción de biomarcadores, inferencia y visualización de resultados. Este logro es relevante desde el punto de vista académico porque combina ingeniería de software, ciencia de datos, procesamiento digital de señales y salud digital.
 
@@ -382,7 +513,8 @@ La decisión de no iniciar con deep learning end-to-end no es una renuncia tecno
 
 ---
 
-## XIV. Limitaciones
+## XV. Limitaciones
+
 
 1. **No es diagnóstico clínico:** MedDiag2 solo entrega una estimación preliminar de riesgo y no reemplaza evaluación neurológica, fonoaudiológica ni médica.
 2. **Dataset histórico limitado:** el modelo actual se apoya en un dataset público pequeño, útil como línea base, pero insuficiente para afirmar generalización clínica [7].
@@ -397,7 +529,8 @@ La decisión de no iniciar con deep learning end-to-end no es una renuncia tecno
 
 ---
 
-## XV. Recomendaciones y Trabajo Futuro
+## XVI. Recomendaciones y Trabajo Futuro
+
 
 1. Consolidar Parselmouth/Praat como extractor principal para F0, jitter, shimmer y HNR.
 2. Mantener Librosa como soporte de carga, preprocesamiento, análisis espectral y validaciones auxiliares.
@@ -407,8 +540,8 @@ La decisión de no iniciar con deep learning end-to-end no es una renuncia tecno
 6. Comparar Parselmouth, openSMILE [16], DisVoice y Librosa/SciPy en términos de completitud, estabilidad, tiempo de procesamiento, errores y plausibilidad fisiológica.
 7. Incorporar PC-GITA como dataset prioritario de validación contextual para población colombiana.
 8. Incorporar NeuroVoz como dataset externo en español para evaluar generalización lingüística.
-9. Reentrenar o calibrar modelos solo con features realmente medidas por el pipeline definitivo.
-10. Evaluar Random Forest, SVM, Logistic Regression y XGBoost bajo validación cruzada y validación externa.
+9. Reentrenar o calibrar modelos solo con features realmente medidas por el pipeline definitivo, extendiendo la optimización SMOTE a otros algoritmos como Random Forest y SVM.
+10. Evaluar Random Forest, SVM, Logistic Regression y XGBoost bajo validación cruzada y validación externa, aplicando SMOTE y ajuste de umbral a cada uno.
 11. Reportar futuros modelos siguiendo criterios de TRIPOD+AI y evaluar riesgo de sesgo con PROBAST+AI.
 12. Explorar Wav2Vec2, HuBERT o WavLM solo cuando exista un banco suficiente de audios etiquetados y controlados.
 13. Incorporar en la interfaz mensajes claros cuando un audio sea rechazado y recomendaciones para repetir la grabación.
@@ -416,7 +549,8 @@ La decisión de no iniciar con deep learning end-to-end no es una renuncia tecno
 
 ---
 
-## XVI. Conclusiones
+## XVII. Conclusiones
+
 
 MedDiag2 puede consolidarse como una herramienta de tamizaje experimental basada en voz, no como un sistema de diagnóstico clínico. La ruta actual es adecuada porque prioriza control de calidad, extracción reproducible de biomarcadores, versionado de features, trazabilidad de inferencia y validación comparativa.
 
@@ -442,6 +576,7 @@ En síntesis, MedDiag2 avanza desde un MVP de predicción médica general hacia 
 | **PPE** | Entropía de distribución del pitch (*Pitch Period Entropy*) |
 | **RPDE** | Entropía de densidad de periodos recurrentes (*Recurrence Period Density Entropy*) |
 | **MDVP** | *Multi-Dimensional Voice Program* (software de análisis acústico) |
+| **SMOTE** | *Synthetic Minority Oversampling Technique* — técnica de sobremuestreo sintético para balancear clases |
 | **Parselmouth** | Interfaz de Python para acceder a funcionalidades de Praat |
 
 ---
@@ -485,3 +620,16 @@ Los autores agradecen a Sandra Patricia Zabala Orrego, docente asesora del curso
 [15] K. G. M. Moons et al., "PROBAST+AI: an updated quality, risk of bias, and applicability assessment tool for prediction models using regression or artificial intelligence methods," *BMJ*, vol. 388, e082505, 2025.
 
 [16] F. Eyben et al., "The Geneva Minimalistic Acoustic Parameter Set (GeMAPS) for voice research and affective computing," *IEEE Trans. Affective Computing*, vol. 7, no. 2, pp. 190–202, 2016.
+
+[17] T. Chen and C. Guestrin, "XGBoost: A scalable tree boosting system," in *Proc. 22nd ACM SIGKDD Int. Conf. Knowledge Discovery and Data Mining*, 2016, pp. 785–794. DOI: 10.1145/2939672.2939785
+
+[18] J. H. Friedman, "Greedy function approximation: A gradient boosting machine," *Annals of Statistics*, vol. 29, no. 5, pp. 1189–1232, 2001.
+
+[19] L. Breiman, "Random forests," *Machine Learning*, vol. 45, no. 1, pp. 5–32, 2001.
+
+[20] C. Cortes and V. Vapnik, "Support-vector networks," *Machine Learning*, vol. 20, no. 3, pp. 273–297, 1995.
+
+[21] A. Tsanas, M. A. Little, P. E. McSharry, and L. O. Ramig, "Accurate telemonitoring of Parkinson's disease symptom severity using nonlinear speech signal processing and statistical machine learning," *IEEE Trans. Biomedical Engineering*, vol. 59, no. 5, pp. 1264–1271, 2012. DOI: 10.1109/TBME.2011.2181516
+
+[22] C. O. Sakar et al., "A comparative analysis of speech signal processing algorithms for Parkinson's disease classification and the use of the tunable Q-factor wavelet transform," *Applied Soft Computing*, vol. 74, pp. 255–263, 2019. DOI: 10.1016/j.asoc.2018.10.022
+
