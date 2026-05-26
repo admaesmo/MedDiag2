@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function NavItem({ href, label, icon: Icon }: { href: string; label: string; icon: LucideIcon }) {
 export function NavItem({
   href,
   label,
