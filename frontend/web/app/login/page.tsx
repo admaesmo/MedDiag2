@@ -11,7 +11,6 @@ import { loginSchema, type LoginValues } from "@/features/auth/schema";
 import { isLocalAuthEnabled, localAuthDefaults } from "@/lib/auth-mode";
 import { setLocalSession } from "@/lib/local-auth";
 import { createClient } from "@/lib/supabase/client";
-import { issueDevToken } from "@/lib/api";
 import { useUiStore } from "@/stores/ui-store";
 import { t } from "@/lib/i18n";
 
@@ -56,19 +55,10 @@ export default function LoginPage() {
         return;
       }
 
-      try {
-        // Obtener un JWT real del backend de Render
-        const tokenResponse = await issueDevToken(
-          localAuthDefaults.email,
-          localAuthDefaults.role,
-          localAuthDefaults.displayName
-        );
-        setLocalSession(tokenResponse.access_token, localAuthDefaults.email);
-      } catch {
-        // Fallback: si el backend no está disponible, usar token simulado
-        const mockToken = "dev_" + btoa(JSON.stringify({ email: localAuthDefaults.email, role: localAuthDefaults.role, ts: Date.now() }));
-        setLocalSession(mockToken, localAuthDefaults.email);
-      }
+      // Generar un token simulado para desarrollo local
+      // El backend acepta tokens "dev_*" cuando AUTH_PROVIDER=local
+      const mockToken = "dev_" + btoa(JSON.stringify({ email: localAuthDefaults.email, role: localAuthDefaults.role, ts: Date.now() }));
+      setLocalSession(mockToken, localAuthDefaults.email);
       setIsLoading(false);
       router.replace(nextPath);
       router.refresh();

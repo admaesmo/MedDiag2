@@ -65,6 +65,28 @@ def create_dev_token(
 
 def _decode_token(token: str) -> dict:
     """Decodifica y verifica un JWT usando el proveedor configurado."""
+    # Soporte para tokens simulados "dev_*" cuando AUTH_PROVIDER=local
+    # Esto permite que el frontend en Vercel use autenticación local sin JWT real
+    if AUTH_PROVIDER == "local" and token.startswith("dev_"):
+        try:
+            import base64
+            import json
+
+            payload_b64 = token[len("dev_"):]
+            decoded_bytes = base64.b64decode(payload_b64)
+            payload = json.loads(decoded_bytes.decode("utf-8"))
+            return {
+                "sub": payload.get("email", "dev@local"),
+                "email": payload.get("email", "dev@local"),
+                "roles": [payload.get("role", "patient")],
+                "display_name": payload.get("email", "dev@local"),
+            }
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token de desarrollo inválido.",
+            )
+
     try:
         if AUTH_PROVIDER == "supabase":
             header = jwt.get_unverified_header(token)
