@@ -21,7 +21,9 @@ from app.services.audio_processing import (
     process_audio_file,
     AudioProcessingError
 )
+from app.services.feature_validator import validate_features, get_feature_quality_score
 from app.services.storage_service import get_storage_backend
+
 
 logger = logging.getLogger(__name__)
 FEATURE_EXTRACTOR_VERSION = "audio-processing+nonlinear-v1"
@@ -306,6 +308,38 @@ def process_audio_pipeline(
         if not is_valid:
             logger.warning(f"Biomarcadores faltantes o inválidos: {missing_features}; se usarán los disponibles")
 
+        # Validar calidad de las features contra rangos UCI.
+        quality = validate_features(features)
+        quality_score = get_feature_quality_score(features)
+        
+        if not quality["valid"]:
+            error_msg = (
+                f"Extracción de audio no confiable: {quality['message']}. "
+                f"Puntaje de calidad: {quality_score:.1%}. "
+                f"Las features extraídas no se asemejan al dataset de entrenamiento."
+            )
+            logger.warning(f"Calidad de features rechazada para audio {audio_record_id}: {error_msg}")
+            
+            # Almacenar features igual para depuración, pero marcar como fallido
+            store_biomarker_feature_set(
+                db=db,
+                audio_record_id=audio_record_id,
+                features=features,
+                missing_features=missing_features,
+            )
+            
+            audio_record.status = "failed"
+            audio_record.notes = json.dumps({
+                "processing_error": error_msg,
+                "quality_score": quality_score,
+                "out_of_range_pct": quality["out_of_range_pct"],
+                "critical_failures": quality["critical_failures"],
+            })
+            audio_record.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            
+            raise AudioPipelineError(error_msg)
+
         feature_set = store_biomarker_feature_set(
             db=db,
             audio_record_id=audio_record_id,
@@ -315,6 +349,7 @@ def process_audio_pipeline(
         
         # Crear diagnóstico preliminar de Parkinson.
         diagnosis = create_parkinson_diagnosis(db, user_id, features, audio_record_id)
+
 
         # Vincular diagnóstico en notes; los biomarcadores viven en BiomarkerFeature.
         store_processing_result(db, audio_record_id, diagnosis.id)

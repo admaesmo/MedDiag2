@@ -23,6 +23,8 @@ import joblib
 import numpy as np
 from dotenv import load_dotenv
 
+from app.services.feature_validator import validate_features, get_feature_quality_score
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -90,7 +92,9 @@ heart_model = _load_model("heart_disease_model.sav")
 # Modelo de Parkinson — XGBoost entrenado con SMOTE (balanceo de clases)
 # ---------------------------------------------------------------------------
 
-PARKINSON_THRESHOLD = 0.55  # umbral ajustado: mejor balance sensibilidad/especificidad
+PARKINSON_THRESHOLD = 0.85  # umbral ajustado: mejor balance sensibilidad/especificidad para audio real
+
+
 
 try:
     parkinsons_model = _load_model("parkinsons_model_smote.sav")
