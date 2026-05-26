@@ -30,16 +30,27 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="MedDiag API", version="2.0.0")
 
+# CORS: cuando ALLOWED_ORIGINS="*" no se puede usar allow_credentials=True
+# Los navegadores bloquean la combinación de allow_origins=["*"] con allow_credentials=True
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "*")
 origins = [o.strip() for o in allowed_origins.split(",")]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if origins == ["*"]:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # ---- Register new routers ----
 app.include_router(auth_router)
@@ -241,5 +252,3 @@ def predict_parkinson_endpoint(payload: ParkinsonRequest, db: Session = Depends(
         positive_msg="La persona puede tener Parkinson, consulte a su médico.",
         negative_msg="La persona no tiene Parkinson.",
     )
-
-
