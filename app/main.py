@@ -39,7 +39,7 @@ app = FastAPI(title="MedDiag API", version="2.0.0")
 # cabeceras CORS a respuestas de error (400, 422, etc.).
 # ---------------------------------------------------------------------------
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "*")
-origins = [o.strip() for o in allowed_origins_env.split(",")]
+origins = [o.strip().rstrip("/") for o in allowed_origins_env.split(",")]
 
 
 class ManualCORSMiddleware(BaseHTTPMiddleware):
@@ -47,6 +47,10 @@ class ManualCORSMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request, call_next):
         origin = request.headers.get("origin", "")
+
+        # Normalizar: quitar barra final del origin para evitar discrepancias
+        # El navegador envía el origin sin barra, pero ALLOWED_ORIGINS podría tenerla
+        origin = origin.rstrip("/")
 
         # Determinar si el origen está permitido
         if "*" in origins:
