@@ -6,10 +6,15 @@ dataset UCI Oxford con el que fue entrenado el modelo de Parkinson.
 
 Si demasiadas features están fuera de rango, la extracción de audio
 falló y no se debe confiar en la predicción.
+
+Incluye una función de saneamiento (``sanitize_features``) que ajusta
+valores fuera de rango a los límites del dataset UCI, como solución
+temporal para lidiar con grabaciones ruidosas o de baja calidad.
 """
 
 from __future__ import annotations
 
+import copy
 import logging
 from typing import Dict, List, Tuple
 
@@ -41,6 +46,7 @@ UCI_RANGES: Dict[str, Tuple[float, float]] = {
     "D2":                (1.5, 3.0),
     "PPE":               (0.08, 0.50),
 }
+
 
 # Features críticas que deben estar en rango para considerar la extracción válida
 # Son las que más se distorsionan con audio de celular
@@ -176,3 +182,71 @@ def get_feature_quality_score(features: Dict[str, float]) -> float:
     score = max(0.0, score - penalty)
 
     return score
+
+
+def sanitize_features(features: Dict[str, float]) -> Dict[str, float]:
+    """
+    Sanea (normaliza) las features extraídas de audio aplicando **clamping**
+    a los rangos del dataset UCI Oxford.
+
+    Esta es una solución **temporal** para la demostración: cuando la grabación
+    de audio produce parámetros inconsistentes (fuera de rango), esta función
+    los ajusta al límite más cercano del rango esperado por el modelo.
+
+    El clamping se aplica feature por feature usando los rangos definidos en
+    ``UCI_RANGES``. Las features que no están en ``UCI_RANGES`` se dejan
+    intactas.
+
+    Parameters
+    ----------
+    features : Dict[str, float]
+        Diccionario de features extraídas del audio (posiblemente con valores
+        aberrantes).
+
+    Returns
+    -------
+    Dict[str, float]
+        Nuevo diccionario con todas las features ajustadas a rangos válidos.
+
+    Example
+    -------
+    >>> sanitize_features({"MDVP:Fo(Hz)": 500.0, "HNR": -5.0, "NHR": 2.5})
+    {"MDVP:Fo(Hz)": 260.0, "HNR": 8.0, "NHR": 0.32}
+    """
+    sanitized = {}
+    clamped_count = 0
+    total_uci = 0
+
+    for feature, value in features.items():
+        if feature in UCI_RANGES:
+            total_uci += 1
+            lo, hi = UCI_RANGES[feature]
+            if value < lo:
+                sanitized[feature] = lo
+                clamped_count += 1
+                logger.debug(
+                    "sanitize_features: %s = %.6f → clamp inferior a %.6f",
+                    feature, value, lo,
+                )
+            elif value > hi:
+                sanitized[feature] = hi
+                clamped_count += 1
+                logger.debug(
+                    "sanitize_features: %s = %.6f → clamp superior a %.6f",
+                    feature, value, hi,
+                )
+            else:
+                sanitized[feature] = value
+        else:
+            # Feature no definida en UCI_RANGES, se pasa tal cual.
+            sanitized[feature] = value
+
+    if clamped_count > 0:
+        logger.info(
+            "sanitize_features: %d/%d features fueron ajustadas a rangos UCI "
+            "(solución temporal para la demo)",
+            clamped_count, total_uci,
+        )
+
+    return sanitized
+

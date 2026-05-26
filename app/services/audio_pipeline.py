@@ -21,7 +21,12 @@ from app.services.audio_processing import (
     process_audio_file,
     AudioProcessingError
 )
-from app.services.feature_validator import validate_features, get_feature_quality_score
+from app.services.feature_validator import (
+    sanitize_features,
+    validate_features,
+    get_feature_quality_score,
+)
+
 from app.services.storage_service import get_storage_backend
 
 
@@ -303,6 +308,14 @@ def process_audio_pipeline(
                 source_name=audio_record.original_filename or audio_record.stored_filename,
             )
         
+        # --- SANEAMIENTO TEMPORAL DE FEATURES (DEMO) ---
+        # Aplica clamping a los valores fuera de rango para que el modelo
+        # pueda recibir parámetros coherentes incluso si la grabación fue
+        # ruidosa o de baja calidad.  Esto es una solución temporal que
+        # será reemplazada por un mejor preprocesamiento de audio.
+        raw_features = dict(features)  # conservar originales para depuración
+        features = sanitize_features(features)
+
         # Validar biomarcadores.
         is_valid, missing_features = validate_features_for_prediction(features)
         if not is_valid:
@@ -334,11 +347,13 @@ def process_audio_pipeline(
                 "quality_score": quality_score,
                 "out_of_range_pct": quality["out_of_range_pct"],
                 "critical_failures": quality["critical_failures"],
+                "raw_features_snapshot": {k: float(v) for k, v in raw_features.items()},
             })
             audio_record.updated_at = datetime.now(timezone.utc)
             db.commit()
             
             raise AudioPipelineError(error_msg)
+
 
         feature_set = store_biomarker_feature_set(
             db=db,
