@@ -5,6 +5,8 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from app.utils.database import SessionLocal, Base, engine
 from app.utils import crud
@@ -30,27 +32,57 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="MedDiag API", version="2.0.0")
 
-# CORS: cuando ALLOWED_ORIGINS="*" no se puede usar allow_credentials=True
-# Los navegadores bloquean la combinación de allow_origins=["*"] con allow_credentials=True
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "*")
-origins = [o.strip() for o in allowed_origins.split(",")]
+# ---------------------------------------------------------------------------
+# CORS manual — garantiza que TODAS las respuestas (incluso errores 400/422)
+# incluyan Access-Control-Allow-Origin.
+# El middleware CORSMiddleware de FastAPI tiene un bug que no agrega las
+# cabeceras CORS a respuestas de error (400, 422, etc.).
+# ---------------------------------------------------------------------------
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "*")
+origins = [o.strip() for o in allowed_origins_env.split(",")]
 
-if origins == ["*"]:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+
+class ManualCORSMiddleware(BaseHTTPMiddleware):
+    """Middleware CORS que se ejecuta SIEMPRE, incluso en respuestas de error."""
+
+    async def dispatch(self, request, call_next):
+        origin = request.headers.get("origin", "")
+
+        # Determinar si el origen está permitido
+        if "*" in origins:
+            allow_origin = "*"
+        elif origin in origins:
+            allow_origin = origin
+        else:
+            allow_origin = origins[0] if origins else "*"
+
+        # Manejar preflight OPTIONS inmediatamente
+        if request.method == "OPTIONS":
+            response = Response()
+            response.headers["Access-Control-Allow-Origin"] = allow_origin
+            response.headers["Access-Control-Allow-Methods"] = "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+            response.headers["Access-Control-Max-Age"] = "600"
+            if allow_origin != "*":
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+            return response
+
+        response: Response = await call_next(request)
+
+        # Agregar cabeceras CORS a TODAS las respuestas (incluso errores)
+        response.headers["Access-Control-Allow-Origin"] = allow_origin
+        response.headers["Access-Control-Allow-Methods"] = "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+        response.headers["Access-Control-Max-Age"] = "600"
+
+        # allow_credentials solo si no es "*"
+        if allow_origin != "*":
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+
+        return response
+
+
+app.add_middleware(ManualCORSMiddleware)
 
 # ---- Register new routers ----
 app.include_router(auth_router)
