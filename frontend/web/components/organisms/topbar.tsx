@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Search, Settings } from "lucide-react";
+import { Bell, Menu, Search, Settings } from "lucide-react";
 import { useUiStore } from "@/stores/ui-store";
 import { supportedLocales } from "@/lib/i18n/config";
 import { t } from "@/lib/i18n";
@@ -10,10 +10,19 @@ import { LogoutButton } from "@/components/logout-button";
 export function Topbar({ userEmail }: { userEmail: string }) {
   const locale = useUiStore((state) => state.locale);
   const setLocale = useUiStore((state) => state.setLocale);
+  const setSidebarOpen = useUiStore((state) => state.setSidebarOpen);
 
   return (
     <header className="sticky top-0 z-20 flex h-20 items-center justify-between bg-surface-low px-4 lg:px-8">
       <div className="flex items-center gap-6">
+        <button
+          type="button"
+          className="rounded-xl p-2 text-foreground hover:bg-surface-high lg:hidden"
+          onClick={() => setSidebarOpen(true)}
+          aria-label={t(locale, "common", "openNavigation")}
+        >
+          <Menu className="h-5 w-5" />
+        </button>
         <h1 className="font-headline text-2xl font-extrabold text-primary">{t(locale, "common", "appName")}</h1>
         <div className="relative hidden w-80 lg:block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

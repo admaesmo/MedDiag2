@@ -31,7 +31,8 @@ export default function ParkinsonPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const locale = useUiStore((state) => state.locale);
-  const [consentAccepted, setConsentAccepted] = useState(false);
+  const consentAccepted = useUiStore((state) => state.parkinsonConsentAccepted);
+  const setConsentAccepted = useUiStore((state) => state.setParkinsonConsentAccepted);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isExtractingBiomarkers, setIsExtractingBiomarkers] = useState(false);
   const [audioUploadMessage, setAudioUploadMessage] = useState<string | null>(null);
@@ -153,6 +154,43 @@ export default function ParkinsonPage() {
     setConsentError(null);
     setConsentAccepted(true);
   };
+
+  const recordingGuideSteps = [
+    {
+      title: t(locale, "parkinson", "recordingGuideStep1Title"),
+      body: t(locale, "parkinson", "recordingGuideStep1Body"),
+    },
+    {
+      title: t(locale, "parkinson", "recordingGuideStep2Title"),
+      body: t(locale, "parkinson", "recordingGuideStep2Body"),
+    },
+    {
+      title: t(locale, "parkinson", "recordingGuideStep3Title"),
+      body: t(locale, "parkinson", "recordingGuideStep3Body"),
+    },
+    {
+      title: t(locale, "parkinson", "recordingGuideStep4Title"),
+      body: t(locale, "parkinson", "recordingGuideStep4Body"),
+    },
+  ];
+
+  const recordingDos = [
+    t(locale, "parkinson", "recordingDo1"),
+    t(locale, "parkinson", "recordingDo2"),
+    t(locale, "parkinson", "recordingDo3"),
+  ];
+
+  const recordingDonts = [
+    t(locale, "parkinson", "recordingDont1"),
+    t(locale, "parkinson", "recordingDont2"),
+    t(locale, "parkinson", "recordingDont3"),
+  ];
+
+  const guidanceStatus = recording.isRecording
+    ? t(locale, "parkinson", "recordingActiveHint")
+    : isExtractingBiomarkers || isUploadingAudio || isUploadingFile
+      ? t(locale, "parkinson", "recordingProcessingHint")
+      : t(locale, "parkinson", "recordingIdleHint");
 
   // ── Helper: upload del blob después de autorización ──
   const uploadBlobAfterConsent = async (
@@ -370,12 +408,12 @@ export default function ParkinsonPage() {
   // ── Handle: confirmar inferencia desde el modal ──
   const handleConfirmInference = () => {
     if (!previewFeatures) {
-      setPreviewError("No hay features disponibles para confirmar.");
+      setPreviewError(t(locale, "parkinson", "previewNoFeatures"));
       return;
     }
 
     if (!previewConsentChecked) {
-      setPreviewError("Debes autorizar el análisis antes de continuar.");
+      setPreviewError(t(locale, "parkinson", "previewConsentRequired"));
       return;
     }
 
@@ -482,9 +520,9 @@ export default function ParkinsonPage() {
       {isPreviewOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-foreground/25 p-4" role="dialog" aria-modal="true" aria-labelledby="preview-title">
           <Card className="w-full max-w-3xl">
-            <h3 id="preview-title" className="text-2xl font-bold">Pre-análisis de audio</h3>
+            <h3 id="preview-title" className="text-2xl font-bold">{t(locale, "parkinson", "previewTitle")}</h3>
             <p className="mt-2 text-sm text-muted-foreground">
-              Revisa los features extraídos del audio. Si estás de acuerdo, autoriza continuar con la inferencia.
+              {t(locale, "parkinson", "previewDescription")}
             </p>
 
             <div className="mt-4 max-h-80 overflow-y-auto rounded-xl border border-primary/10 bg-primary/5 p-3">
@@ -507,7 +545,7 @@ export default function ParkinsonPage() {
                 onChange={(event) => setPreviewConsentChecked(event.target.checked)}
                 className="mt-1 h-4 w-4"
               />
-              <span>Autorizo continuar con la predicción usando estos features extraídos.</span>
+              <span>{t(locale, "parkinson", "previewConsentLabel")}</span>
             </label>
 
             {previewError ? (
@@ -527,10 +565,10 @@ export default function ParkinsonPage() {
                   pendingUploadRef.current = null;
                 }}
               >
-                Cancelar
+                {t(locale, "parkinson", "previewCancel")}
               </Button>
               <Button type="button" onClick={handleConfirmInference} disabled={prediction.isPending}>
-                Confirmar y ejecutar inferencia
+                {prediction.isPending ? t(locale, "parkinson", "previewLoading") : t(locale, "parkinson", "previewConfirm")}
               </Button>
             </div>
           </Card>
@@ -538,6 +576,59 @@ export default function ParkinsonPage() {
       ) : null}
 
       <div className="surface-pane">
+        <Card className="mx-auto max-w-5xl border border-primary/10 bg-white/90">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t(locale, "parkinson", "recordingGuideEyebrow")}</p>
+              <h3 className="mt-2 text-2xl font-bold text-foreground">{t(locale, "parkinson", "recordingGuideTitle")}</h3>
+              <p className="mt-2 text-sm text-muted-foreground">{t(locale, "parkinson", "recordingGuideSubtitle")}</p>
+            </div>
+            <div className="rounded-2xl bg-primary/5 px-4 py-3 text-sm text-foreground">
+              <p className="font-semibold text-primary">{t(locale, "parkinson", "recordingDurationTitle")}</p>
+              <p className="mt-1 text-muted-foreground">{t(locale, "parkinson", "recordingDurationHint")}</p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-4">
+            {recordingGuideSteps.map((step) => (
+              <div key={step.title} className="rounded-2xl border border-surface-high bg-surface-lowest p-4">
+                <p className="text-sm font-semibold text-primary">{step.title}</p>
+                <p className="mt-2 text-sm text-muted-foreground">{step.body}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
+              <p className="text-sm font-semibold text-emerald-900">{t(locale, "parkinson", "recordingDoTitle")}</p>
+              <ul className="mt-3 space-y-2 text-sm text-emerald-900/90">
+                {recordingDos.map((item) => (
+                  <li key={item} className="flex gap-2">
+                    <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-600" aria-hidden="true" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4">
+              <p className="text-sm font-semibold text-rose-900">{t(locale, "parkinson", "recordingDontTitle")}</p>
+              <ul className="mt-3 space-y-2 text-sm text-rose-900/90">
+                {recordingDonts.map((item) => (
+                  <li key={item} className="flex gap-2">
+                    <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-rose-600" aria-hidden="true" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-2xl bg-surface-lowest px-4 py-3 text-sm text-muted-foreground">
+            {guidanceStatus}
+          </div>
+        </Card>
+
         <Card className="mx-auto max-w-3xl bg-white/90 text-center backdrop-blur">
           <div className="relative mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary text-white">
             {recording.isRecording ? <span className="absolute inset-0 rounded-2xl bg-primary/30 animate-pulse-ring" aria-hidden="true" /> : null}
@@ -573,13 +664,13 @@ export default function ParkinsonPage() {
                 variant="secondary"
                 size="lg"
                 onClick={handleInferenceClick}
-                  disabled={!canRunInference || prediction.isPending || isConsentOpen || isLoadingPreview}
+                disabled={!canRunInference || prediction.isPending || isConsentOpen || isLoadingPreview}
               >
                 {prediction.isPending
                   ? t(locale, "parkinson", "processing")
-                    : isLoadingPreview
-                      ? "Cargando pre-análisis..."
-                  : isAudioProcessing
+                  : isLoadingPreview
+                    ? t(locale, "parkinson", "previewLoading")
+                    : isAudioProcessing
                     ? t(locale, "parkinson", "audioProcessing")
                     : t(locale, "parkinson", "runInference")}
               </Button>
