@@ -1,4 +1,7 @@
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+// En producción (Vercel), si no se configuró NEXT_PUBLIC_API_BASE_URL,
+// usar la URL del backend en Render por defecto.
+const isProduction = typeof window !== "undefined" && window.location.hostname !== "localhost";
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || (isProduction ? "https://meddiag-api-h0cm.onrender.com" : "http://localhost:8000");
 const mockFlag = (process.env.NEXT_PUBLIC_USE_MOCK_API || "").trim().toLowerCase();
 const useMockApi = mockFlag === "true" || mockFlag === "1" || mockFlag === "yes" || mockFlag === "on";
 
