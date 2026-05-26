@@ -37,10 +37,11 @@ app = FastAPI(title="MedDiag API", version="2.0.0")
 # incluyan Access-Control-Allow-Origin.
 # El middleware CORSMiddleware de FastAPI tiene un bug que no agrega las
 # cabeceras CORS a respuestas de error (400, 422, etc.).
+#
+# Estrategia: devolver el origin exacto que el navegador envió (reflejado).
+# Esto funciona con cualquier dominio (producción, previews de Vercel, etc.)
+# y es compatible con allow_credentials=true.
 # ---------------------------------------------------------------------------
-allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "*")
-origins = [o.strip().rstrip("/") for o in allowed_origins_env.split(",")]
-
 
 class ManualCORSMiddleware(BaseHTTPMiddleware):
     """Middleware CORS que se ejecuta SIEMPRE, incluso en respuestas de error."""
@@ -49,16 +50,15 @@ class ManualCORSMiddleware(BaseHTTPMiddleware):
         origin = request.headers.get("origin", "")
 
         # Normalizar: quitar barra final del origin para evitar discrepancias
-        # El navegador envía el origin sin barra, pero ALLOWED_ORIGINS podría tenerla
         origin = origin.rstrip("/")
 
-        # Determinar si el origen está permitido
-        if "*" in origins:
-            allow_origin = "*"
-        elif origin in origins:
+        # Reflejar el origin exacto que el navegador envió.
+        # Esto permite cualquier dominio (producción, previews de Vercel, etc.)
+        # y es compatible con allow_credentials=true.
+        if origin:
             allow_origin = origin
         else:
-            allow_origin = origins[0] if origins else "*"
+            allow_origin = "*"
 
         # Manejar preflight OPTIONS inmediatamente
         if request.method == "OPTIONS":
