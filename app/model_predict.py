@@ -23,6 +23,7 @@ import joblib
 import numpy as np
 from dotenv import load_dotenv
 
+from app.services.constants import PARKINSON_FEATURE_ORDER
 from app.services.feature_validator import validate_features, get_feature_quality_score
 
 load_dotenv()
@@ -63,12 +64,8 @@ HEART_FEATURE_ORDER = [
     "thal",
 ]
 
-PARK_FEATURE_ORDER = [
-    "MDVP:Fo(Hz)", "MDVP:Fhi(Hz)", "MDVP:Flo(Hz)", "MDVP:Jitter(%)", "MDVP:Jitter(Abs)",
-    "MDVP:RAP", "MDVP:PPQ", "Jitter:DDP", "MDVP:Shimmer", "MDVP:Shimmer(dB)",
-    "Shimmer:APQ3", "Shimmer:APQ5", "MDVP:APQ", "Shimmer:DDA", "NHR", "HNR",
-    "RPDE", "DFA", "spread1", "spread2", "D2", "PPE",
-]
+# Alias para compatibilidad con imports existentes.
+PARK_FEATURE_ORDER = PARKINSON_FEATURE_ORDER
 
 # ---------------------------------------------------------------------------
 # Carga de modelos (una sola vez por proceso)
@@ -184,7 +181,7 @@ def predict_parkinson(
     if parkinsons_model is None or parkinsons_scaler is None:
         raise RuntimeError("Modelo de Parkinson no disponible.")
 
-    x = np.array([[float(features[f]) for f in PARK_FEATURE_ORDER]])
+    x = np.array([[float(features[f]) for f in PARKINSON_FEATURE_ORDER]])
     x = parkinsons_scaler.transform(x)
     proba = float(parkinsons_model.predict_proba(x)[0][1])
     label = 1 if proba >= threshold else 0

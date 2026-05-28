@@ -18,26 +18,12 @@ import soundfile as sf
 from parselmouth import Sound
 from parselmouth.praat import call
 
-try:
-    import librosa
-
-    LIBROSA_AVAILABLE = True
-except ImportError:  # pragma: no cover - dependency is declared in requirements.txt
-    LIBROSA_AVAILABLE = False
-
-try:
-    from pydub import AudioSegment
-
-    PYDUB_AVAILABLE = True
-except ImportError:  # pragma: no cover - dependency is declared in requirements.txt
-    PYDUB_AVAILABLE = False
-
 from app.model_predict import (
     PARK_FEATURE_ORDER,
     predict_parkinson,
 )
 from app.services.audio_processing import AudioProcessingError, extract_features_from_audio
-from app.utils.validators import validate_required_features
+from app.services.audio_utils import decode_audio_bytes
 
 TARGET_SAMPLE_RATE_HZ = 16000
 TARGET_CHANNELS = 1
@@ -63,58 +49,6 @@ class PreparedVoiceAudio:
     duration_seconds: float
 
 
-def _guess_suffix(source_name: Optional[str]) -> str:
-    if not source_name:
-        return ".wav"
-
-    suffix = os.path.splitext(source_name)[1].lower().strip()
-    return suffix if suffix else ".wav"
-
-
-def _decode_audio_bytes(
-    audio_bytes: bytes,
-    source_name: Optional[str],
-    sample_rate_hz: int,
-) -> Tuple[np.ndarray, int]:
-    if not LIBROSA_AVAILABLE:
-        raise VoiceBiomarkerError("librosa es requerido para decodificar el audio cargado.")
-
-    suffix = _guess_suffix(source_name)
-
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_input:
-        temp_input.write(audio_bytes)
-        temp_input_path = temp_input.name
-
-    try:
-        try:
-            waveform, sr = librosa.load(temp_input_path, sr=sample_rate_hz, mono=True)
-            return waveform, sr
-        except Exception as decode_error:
-            if not PYDUB_AVAILABLE:
-                raise VoiceBiomarkerError(f"No se pudo decodificar el audio: {decode_error}") from decode_error
-
-            try:
-                segment = AudioSegment.from_file(temp_input_path)
-                segment = segment.set_frame_rate(sample_rate_hz).set_channels(TARGET_CHANNELS)
-                samples = np.array(segment.get_array_of_samples(), dtype=np.float32)
-
-                if samples.size == 0:
-                    raise VoiceBiomarkerError("El audio cargado no contiene muestras legibles.")
-
-                scale = float(1 << (8 * segment.sample_width - 1))
-                if scale > 0:
-                    samples /= scale
-
-                return samples, segment.frame_rate
-            except Exception as pydub_error:
-                raise VoiceBiomarkerError(f"No se pudo decodificar el audio: {pydub_error}") from decode_error
-    finally:
-        try:
-            os.remove(temp_input_path)
-        except OSError:
-            pass
-
-
 def prepare_audio_for_voice_biomarkers(
     audio_bytes: bytes,
     source_name: Optional[str] = None,
@@ -124,11 +58,14 @@ def prepare_audio_for_voice_biomarkers(
     if not audio_bytes:
         raise VoiceBiomarkerError("El archivo de audio cargado está vacío.")
 
-    waveform, sample_rate_hz = _decode_audio_bytes(
-        audio_bytes=audio_bytes,
-        source_name=source_name,
-        sample_rate_hz=TARGET_SAMPLE_RATE_HZ,
-    )
+    try:
+        waveform, sample_rate_hz = decode_audio_bytes(
+            audio_bytes=audio_bytes,
+            source_name=source_name,
+            sample_rate=TARGET_SAMPLE_RATE_HZ,
+        )
+    except Exception as exc:
+        raise VoiceBiomarkerError(f"No se pudo decodificar el audio: {exc}") from exc
 
     if waveform.size == 0:
         raise VoiceBiomarkerError("El audio cargado no contiene datos de forma de onda válidos.")
@@ -238,12 +175,13 @@ def extract_parkinson_model_features(prepared_audio: PreparedVoiceAudio) -> Dict
 
     try:
         normalized_audio_bytes = _read_normalized_audio_bytes(prepared_audio)
-        features = extract_features_from_audio(
+        features, missing = extract_features_from_audio(
             normalized_audio_bytes,
             sample_rate=prepared_audio.sample_rate_hz,
             source_name="normalized.wav",
         )
-        validate_required_features(features, PARK_FEATURE_ORDER)
+        if missing:
+            raise ValueError(f"Features no calculadas: {missing}")
     except AudioProcessingError as exc:
         raise VoiceBiomarkerError(f"No se pudieron extraer características para el modelo de Parkinson: {exc}") from exc
     except ValueError as exc:

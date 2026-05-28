@@ -16,10 +16,8 @@ de biomarcadores.
 
 from __future__ import annotations
 
-import io
 import logging
-import tempfile
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -27,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.models import AudioRecord, AudioQualityReport
 from app.schemas.quality_control import QualityControlResult
+from app.services.audio_utils import decode_audio_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +41,8 @@ SNR_MINIMO_DB = 10.0             # menos de 10 dB → demasiado ruidoso
 UMBRAL_RECORTE = 0.98            # |muestra| >= umbral → candidato a recorte
 
 
-def _cargar_audio_desde_registro(audio_record: AudioRecord) -> tuple[np.ndarray, int]:
-    """Carga y decodifica un archivo WAV desde el almacenamiento en (muestras, tasa_muestreo)."""
+def _cargar_audio_desde_registro(audio_record: AudioRecord) -> Tuple[np.ndarray, int]:
+    """Carga y decodifica un archivo de audio desde almacenamiento."""
     from app.services.storage_service import get_storage_backend
 
     backend = get_storage_backend()
@@ -51,28 +50,8 @@ def _cargar_audio_desde_registro(audio_record: AudioRecord) -> tuple[np.ndarray,
     if not audio_bytes:
         raise RuntimeError(f"No se pudo cargar el audio desde {audio_record.storage_path}")
 
-    try:
-        import librosa
-        y, sr = librosa.load(io.BytesIO(audio_bytes), sr=None, mono=True)
-        return y, sr
-    except Exception:
-        # Respaldo: intentar con pydub.
-        try:
-            from pydub import AudioSegment
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                tmp.write(audio_bytes)
-                ruta_tmp = tmp.name
-            seg = AudioSegment.from_file(ruta_tmp)
-            import os
-            os.remove(ruta_tmp)
-            seg = seg.set_channels(1)
-            y = np.array(seg.get_array_of_samples()).astype(np.float32)
-            escala = float(1 << (8 * seg.sample_width - 1))
-            if escala > 0:
-                y /= escala
-            return y, seg.frame_rate
-        except Exception as exc:
-            raise RuntimeError(f"No se pudo decodificar el audio: {exc}")
+    source_name = getattr(audio_record, "original_filename", None) or getattr(audio_record, "stored_filename", None)
+    return decode_audio_bytes(audio_bytes, source_name=source_name, sample_rate=None)
 
 
 def _calcular_snr(y: np.ndarray, sr: int, marco_ms: int = 30) -> Optional[float]:

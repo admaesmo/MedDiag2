@@ -9,9 +9,12 @@ Implementa aproximaciones prácticas para:
 
 from __future__ import annotations
 
+import logging
 from typing import Dict
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 class NonlinearFeatureError(Exception):
@@ -220,35 +223,50 @@ def compute_spread_features(f0: np.ndarray) -> Dict[str, float]:
     return {"spread1": spread1, "spread2": spread2}
 
 
-def compute_nonlinear_features(y: np.ndarray, f0: np.ndarray) -> Dict[str, float]:
-    """Devuelve el subconjunto determinístico de biomarcadores no lineales."""
+def compute_nonlinear_features(
+    y: np.ndarray, f0: np.ndarray
+) -> tuple[Dict[str, float], list[str]]:
+    """
+    Calcula biomarcadores no lineales y reporta explícitamente los que fallaron.
 
+    Retorna
+    -------
+    features : Dict[str, float]
+        Biomarcadores calculados con éxito.
+    missing : list[str]
+        Nombres de los biomarcadores que no pudieron calcularse.
+    """
     features: Dict[str, float] = {}
+    missing: list[str] = []
 
     try:
         features["DFA"] = compute_dfa(y)
-    except Exception:
-        features["DFA"] = 0.0
+    except Exception as exc:
+        logger.debug("compute_dfa falló: %s", exc)
+        missing.append("DFA")
 
     try:
         features["D2"] = compute_d2(y)
-    except Exception:
-        features["D2"] = 0.0
+    except Exception as exc:
+        logger.debug("compute_d2 falló: %s", exc)
+        missing.append("D2")
 
     try:
         features["PPE"] = compute_ppe(f0)
-    except Exception:
-        features["PPE"] = 0.0
+    except Exception as exc:
+        logger.debug("compute_ppe falló: %s", exc)
+        missing.append("PPE")
 
     try:
         features["RPDE"] = compute_rpde(f0)
-    except Exception:
-        features["RPDE"] = 0.0
+    except Exception as exc:
+        logger.debug("compute_rpde falló: %s", exc)
+        missing.append("RPDE")
 
     try:
         features.update(compute_spread_features(f0))
-    except Exception:
-        features["spread1"] = 0.0
-        features["spread2"] = 0.0
+    except Exception as exc:
+        logger.debug("compute_spread_features falló: %s", exc)
+        missing.extend(["spread1", "spread2"])
 
-    return features
+    return features, missing
