@@ -16,6 +16,8 @@ ALLOWED_MIME_TYPES = {
     "audio/webm",
     "audio/wav",
     "audio/x-wav",
+    "audio/wave",
+    "audio/vnd.wave",
     "audio/mpeg",
     "audio/mp4",
     "audio/ogg",

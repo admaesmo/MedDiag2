@@ -26,6 +26,7 @@ from app.utils.validators import validate_required_features
 from app.api.auth import router as auth_router
 from app.api.voice_biomarkers import router as voice_biomarker_router
 from app.api.audio import router as audio_router
+from app.api.sessions import router as sessions_router
 
 # Create tables if they don't exist
 Base.metadata.create_all(bind=engine)
@@ -92,6 +93,7 @@ app.add_middleware(ManualCORSMiddleware)
 app.include_router(auth_router)
 app.include_router(voice_biomarker_router)
 app.include_router(audio_router)
+app.include_router(sessions_router)
 
 
 # ---- Legacy schemas (unchanged) ----

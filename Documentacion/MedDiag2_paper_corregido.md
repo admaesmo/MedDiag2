@@ -284,7 +284,50 @@ FUNCIÓN analizar_calidad(registro_audio):
 
 **Pseudocódigo 1**: Compuerta QA/QC de `quality_control.py`. Los umbrales son configurables y deben validarse con audios controlados (ver XVI.3).
 
-### D. Extracción de Frecuencia Fundamental
+### D. Preprocesamiento DSP
+
+Una vez que el audio supera la compuerta QA/QC, la señal decodificada se somete a una cascada de filtros digitales antes de la extracción de biomarcadores. Este paso opera sobre una copia de la señal exclusiva para el extractor; el módulo de control de calidad continúa recibiendo la señal cruda para conservar la interpretabilidad de sus métricas.
+
+La cascada sigue el siguiente orden, justificado en términos de la física de la señal:
+
+```
+FUNCIÓN preprocesar_dsp(señal, sr):
+
+  // 1. Filtro paso-alto — Butterworth SOS orden 4, fc = 70 Hz, fase cero
+  //    Elimina rumble, interferencias eléctricas y DC offset implícito.
+  //    fc = 70 Hz deja margen sobre fmin = 75 Hz de pYIN/Praat,
+  //    cubriendo casos de bradifonía documentada en Parkinson (F0 ≈ 70-75 Hz).
+  señal ← sosfiltfilt(sos_hp, señal)
+
+  // 2. Filtro paso-bajo — Butterworth SOS orden 4, fc = 5000 Hz, fase cero
+  //    Conserva formantes (F1-F3 de /a/ < 3 kHz) y armónicos útiles
+  //    para medidas de disfonía, eliminando ruido de alta frecuencia
+  //    que infla max(|ventana|) en el cálculo de shimmer.
+  señal ← sosfiltfilt(sos_lp, señal)
+
+  // 3. VAD por recorte (Voice Activity Detection)
+  //    Elimina silencios de inicio y fin con umbral top_db = 40 dB.
+  //    Garantiza que la normalización y la extracción operen sobre
+  //    el segmento vocal, no sobre ruido o silencio ambiental.
+  señal, _ ← librosa.effects.trim(señal, top_db=40)
+  SI longitud(señal) / sr < 0.5 s → LANZAR error("Fonación insuficiente")
+
+  // 4. Normalización RMS adaptativa — sin clipping
+  //    Homogeneiza el volumen entre grabaciones de distintos micrófonos.
+  //    Ganancia limitada por RMS objetivo (0.1), por pico máximo (0.95)
+  //    y por un techo global (10×). Sin clip posterior: el clip introduce
+  //    armónicos espurios que degradan HNR, D2 y PPE.
+  gain ← min(0.1 / rms(señal), 0.95 / max(|señal|), 10)
+  señal ← señal × gain
+
+  RETORNAR señal
+```
+
+**Pseudocódigo 2**: Cascada de preprocesamiento DSP en `audio_filters.py`. El filtrado bidireccional (`sosfiltfilt`) garantiza fase cero: no hay desfase temporal de los ciclos de pitch, condición necesaria para el cálculo correcto de Jitter. Los filtros se diseñan en formato SOS (*Second-Order Sections*) para estabilidad numérica en frecuencias de corte bajas relativas al Nyquist.
+
+El shimmer es el biomarcador más beneficiado por este preprocesamiento: su cálculo extrae `max(|ventana|)` por período de F0, y el ruido de alta frecuencia infla sistemáticamente ese máximo en señales sin filtrar. El HNR por análisis cepstral también mejora, ya que el ruido de banda ancha distorsiona la relación entre el pico cepstral (armónico) y la energía residual (ruido). Los biomarcadores no lineales (DFA, D2, RPDE) se benefician indirectamente al recibir una señal con geometría de atractor más limpia.
+
+### E. Extracción de Frecuencia Fundamental
 
 La frecuencia fundamental se estima mediante una estrategia escalonada: primero `librosa.pyin` como método principal; luego Parselmouth/Praat como alternativa si no se obtiene F0; finalmente autocorrelación con SciPy como último recurso. A partir de F0 se calculan frecuencia mediana, máxima y mínima.
 
@@ -316,9 +359,9 @@ FUNCIÓN extraer_F0(señal, sr, fmin=75 Hz, fmax=300 Hz):
   LANZAR AudioProcessingError("Sin F0 disponible")
 ```
 
-**Pseudocódigo 2**: Estrategia escalonada de extracción de F0 en `audio_processing.py`. La ruta utilizada se registra en log para facilitar la auditoría del extractor.
+**Pseudocódigo 3**: Estrategia escalonada de extracción de F0 en `audio_processing.py`. La ruta utilizada se registra en log para facilitar la auditoría del extractor.
 
-### E. Extracción de Biomarcadores
+### F. Extracción de Biomarcadores
 
 El extractor calcula o aproxima jitter y medidas derivadas (RAP, PPQ, DDP), shimmer y medidas derivadas (APQ3, APQ5, APQ, DDA), NHR y HNR mediante una aproximación cepstral, y los biomarcadores no lineales (DFA, D2, PPE, RPDE, spread1 y spread2).
 
@@ -371,9 +414,29 @@ FUNCIÓN calcular_biomarcadores_nolineales(señal, f0):
   RETORNAR features, faltantes
 ```
 
-**Pseudocódigo 3**: Extracción de biomarcadores no lineales en `nonlinear_features.py`. Cada función falla de forma independiente; los fallos se reportan en `faltantes` sin silenciarse con 0.0 (ver XVI.4).
+**Pseudocódigo 4**: Extracción de biomarcadores no lineales en `nonlinear_features.py`. Cada función falla de forma independiente; los fallos se reportan en `faltantes` sin silenciarse con 0.0 (ver XVI.4).
 
-### F. Inferencia Preliminar
+### G. Análisis de Múltiples Tomas
+
+El sistema contempla un modo de sesión en el que el usuario graba entre dos y cinco tomas de la vocal sostenida /a/ antes de solicitar la inferencia. Cada toma sigue de forma independiente las etapas A–F; el sistema persiste sus biomarcadores en `BiomarkerFeature` con trazabilidad individual. Cuando el usuario activa el análisis explícitamente, el módulo de sesión agrega los vectores de las tomas válidas mediante mediana y produce dos métricas adicionales:
+
+```
+FUNCIÓN agregar_tomas(lista_feature_sets):
+  PARA CADA biomarcador f en los 22 esperados:
+    valores ← [fs[f] PARA fs EN lista_feature_sets SI f EN fs Y finito(fs[f])]
+    SI valores no vacíos:
+      mediana[f] ← median(valores)
+      cv[f]      ← std(valores) / (|mean(valores)| + ε)   // ε = 1e-6
+
+  session_confidence ← 1 − mean(cv)   // 0 = muy variable, 1 = tomas idénticas
+  RETORNAR mediana, cv, session_confidence
+```
+
+**Pseudocódigo 5**: Agregación multi-toma en `session_pipeline.py`. La mediana es robusta frente a una toma con valores atípicos (outlier de grabación). El coeficiente de variación inter-toma (`cv`) tiene valor diagnóstico propio: alta variabilidad en jitter o shimmer entre tomas del mismo paciente es indicativa de inestabilidad fonatoria real, no de ruido de grabación.
+
+La `session_confidence` resume la consistencia global del conjunto de tomas. Un valor cercano a 1 indica que las tomas fueron homogéneas y el vector agregado es estable; un valor bajo sugiere revisar las condiciones de grabación o la calidad individual de las tomas. El modelo XGBoost recibe el mismo vector de 22 medianas, preservando compatibilidad sin reentrenamiento.
+
+### H. Inferencia Preliminar
 
 Una vez generado el vector de biomarcadores, el pipeline valida que las características esperadas estén presentes y sean finitas. Luego invoca el modelo de Parkinson y genera un registro de diagnóstico preliminar con probabilidad asociada. El resultado se expresa como orientación experimental, no como diagnóstico médico.
 
@@ -404,6 +467,14 @@ Después de la carga, el audio se procesa en segundo plano. Esto mejora la exper
 ### F. Compatibilidad con el Modelo Existente
 
 El pipeline conserva el esquema de 22 variables del modelo de Parkinson ya entrenado. Esto permite reutilizar el modelo actual mientras se mejora progresivamente la calidad de la extracción. Sin embargo, esta compatibilidad no debe confundirse con validación clínica.
+
+### G. Preprocesamiento DSP
+
+Se implementó el módulo `audio_filters.py` con una cascada de cuatro operaciones en orden determinístico: filtro paso-alto Butterworth (fc = 70 Hz, orden 4, fase cero), filtro paso-bajo Butterworth (fc = 5 000 Hz, orden 4, fase cero), recorte de silencios por VAD (top\_db = 40), y normalización RMS adaptativa sin clipping. Los filtros se diseñan en formato SOS (*Second-Order Sections*) y se aplican con `sosfiltfilt` para garantizar que no exista desfase de fase, condición necesaria para el cálculo fiel de Jitter. La normalización limita la ganancia tanto por el RMS objetivo como por el pico máximo de la señal, evitando la introducción de armónicos espurios que degradarían HNR, D2 y PPE. El módulo es invocado en `audio_processing.py` inmediatamente después de la decodificación y antes de la extracción de F0, sin modificar la ruta del módulo de control de calidad, que continúa operando sobre la señal cruda.
+
+### H. Análisis de Múltiples Tomas (Sesiones)
+
+Se implementó un sistema de sesiones de voz (`VoiceSession`) que permite al usuario grabar entre dos y cinco tomas de la vocal sostenida antes de solicitar la inferencia. Cada toma transita de forma independiente por el pipeline completo (QC, DSP, extracción, Feature Store). La inferencia se dispara explícitamente mediante un endpoint dedicado (`POST /sessions/{id}/analyze`), lo que permite al usuario retirar una toma fallida y sustituirla antes de comprometer el análisis. La agregación calcula la mediana de cada biomarcador entre las tomas válidas y reporta el coeficiente de variación inter-toma por variable, cuyo promedio invertido constituye el índice `session_confidence`. Este índice no alimenta al modelo, pero tiene valor como indicador de reproducibilidad: alta variabilidad en jitter o shimmer entre tomas puede señalar inestabilidad fonatoria real, independientemente del resultado de la inferencia. La migración de base de datos correspondiente (revisión 005) agrega la tabla `voice_sessions` y las columnas `session_id` y `take_number` en `audio_records`, manteniendo compatibilidad con el flujo de toma única preexistente.
 
 ---
 
@@ -470,7 +541,7 @@ xychart-beta horizontal
 
 ### C. Pipeline de Inferencia en Producción
 
-El pipeline completo sigue la secuencia reflejada en la Figura 2 y el Pseudocódigo 4. El modelo está serializado en `parkinsons_model_smote.sav` y el escalador en `parkinsons_scaler_smote.sav`; ambos se cargan en memoria al iniciar el servicio mediante `joblib.load`, de modo que la inferencia no requiere reentrenamiento por solicitud.
+El pipeline completo sigue la secuencia reflejada en la Figura 2 y el Pseudocódigo 6. El modelo está serializado en `parkinsons_model_smote.sav` y el escalador en `parkinsons_scaler_smote.sav`; ambos se cargan en memoria al iniciar el servicio mediante `joblib.load`, de modo que la inferencia no requiere reentrenamiento por solicitud.
 
 ```mermaid
 flowchart LR
@@ -478,7 +549,8 @@ flowchart LR
     B --> C{QA/QC}
     C -->|Rechazado| D([rejected\nAudioQualityReport])
     C -->|Aprobado| E[Decodificación\nmono · 22 kHz]
-    E --> F[Extracción F0\npYIN → Praat → Autocorr]
+    E --> P[Preprocesamiento DSP\nHP 70Hz · LP 5kHz · VAD · RMS]
+    P --> F[Extracción F0\npYIN → Praat → Autocorr]
     F --> G[Jitter · Shimmer · HNR]
     F --> H[DFA · D2 · PPE\nRPDE · spread1/2]
     G --> I[Vector 22 features\nBiomarkerFeature]
@@ -529,7 +601,7 @@ FUNCIÓN pipeline_completo(registro_audio, usuario):
   RETORNAR {features, faltantes, diagnóstico.id, prob}
 ```
 
-**Pseudocódigo 4**: Pipeline principal en `audio_pipeline.py`. El umbral de decisión 0.85 fue ajustado empíricamente para mejorar el balance sensibilidad/especificidad en condiciones de audio real. El StandardScaler se mantiene del pipeline anterior para consistencia con el flujo de datos existente.
+**Pseudocódigo 6**: Pipeline principal en `audio_pipeline.py`. El umbral de decisión 0.85 fue ajustado empíricamente para mejorar el balance sensibilidad/especificidad en condiciones de audio real. El StandardScaler se mantiene del pipeline anterior para consistencia con el flujo de datos existente.
 
 ### D. Modelos Adicionales Disponibles
 
@@ -592,6 +664,9 @@ Al culminar el desarrollo se obtuvo una herramienta funcional de tamizaje experi
 9. Endpoint de consulta de características extraídas.
 10. Generación de predicción preliminar con probabilidad asociada.
 11. Documentación técnica sobre librerías, riesgos y ruta de investigación.
+
+12. Módulo de preprocesamiento DSP (`audio_filters.py`) con cascada de filtros Butterworth de fase cero, VAD por recorte y normalización RMS adaptativa sin clipping.
+13. Sistema de sesiones de voz multi-toma (`VoiceSession`, `session_pipeline.py`) con agregación por mediana, coeficiente de variación inter-toma y `session_confidence` como indicador de reproducibilidad.
 
 El proyecto conserva modelos previamente entrenados para diabetes y enfermedad cardiovascular, pero el aporte principal de esta iteración corresponde al fortalecimiento del módulo de Parkinson por voz.
 
@@ -674,6 +749,10 @@ En síntesis, MedDiag avanza desde un prototipo de predicción médica general h
 | spread1 | Desplazamiento de la cola inferior del log-pitch respecto a la mediana; descriptor distribucional del pitch, típicamente negativo en voz normal |
 | spread2 | Dispersión robusta del log-pitch centrado; combina rango intercuartílico y amplitud de la distribución |
 | Endpoint | Ruta específica de la API REST que recibe y procesa una solicitud HTTP (p. ej., `/audio/upload`) |
+| sosfiltfilt | Filtrado bidireccional de fase cero usando secciones de segundo orden (SOS); preserva la alineación temporal de los ciclos de pitch |
+| AudioPreprocessor | Clase DSP de MedDiag que aplica la cascada HP/LP/VAD/normalización antes de la extracción de biomarcadores |
+| VoiceSession | Entidad de base de datos que agrupa múltiples tomas de audio de un mismo usuario para análisis robusto |
+| session\_confidence | Índice de reproducibilidad de una sesión multi-toma; 1 = tomas idénticas, 0 = alta variabilidad inter-toma |
 
 ---
 

@@ -38,6 +38,7 @@ except ImportError:
     logging.warning("SciPy no está disponible. El procesamiento de señales será limitado.")
 
 from app.services.audio_utils import decode_audio_bytes
+from app.services.audio_filters import AudioPreprocessor, AudioPreprocessorError
 from app.services.constants import PARKINSON_FEATURE_ORDER
 from app.services.nonlinear_features import compute_nonlinear_features
 
@@ -53,9 +54,25 @@ def extract_features_from_audio(
     audio_bytes: bytes,
     sample_rate: int = 22050,
     source_name: Optional[str] = None,
+    apply_dsp: bool = True,
+    apply_vad: bool = True,
 ) -> Tuple[Dict[str, float], List[str]]:
     """
     Extrae biomarcadores acústicos de Parkinson desde bytes de audio.
+
+    Parameters
+    ----------
+    audio_bytes : bytes
+        Contenido crudo del archivo de audio.
+    sample_rate : int
+        Tasa de muestreo objetivo tras decodificación.
+    source_name : str, optional
+        Nombre original del archivo (para inferir formato).
+    apply_dsp : bool
+        Si True, aplica la cascada de filtros DSP antes de la extracción.
+        Deshabilitar solo para pruebas A/B o diagnóstico.
+    apply_vad : bool
+        Si True, recorta silencios de inicio/fin (solo activo cuando apply_dsp=True).
 
     Retorna
     -------
@@ -63,17 +80,27 @@ def extract_features_from_audio(
         Biomarcadores calculados con éxito.
     missing : List[str]
         Nombres de las variables que no pudieron calcularse.
-        El llamador decide si rechazar la muestra, marcarla como parcial
-        o continuar con inferencia explícitamente parcial.
     """
     if not LIBROSA_AVAILABLE:
         raise AudioProcessingError("Librosa es requerido para extraer biomarcadores de audio")
 
     y, sr = decode_audio_bytes(audio_bytes, source_name=source_name, sample_rate=sample_rate)
 
+    # --- Preprocesamiento DSP ---
+    # Orden: HP/LP → VAD → normalización RMS.
+    # El QC opera sobre la señal cruda (ruta separada); este paso solo
+    # afecta la señal que llega al extractor de biomarcadores.
+    if apply_dsp:
+        try:
+            preprocessor = AudioPreprocessor(sr=sr)
+            y = preprocessor.preprocess(y, apply_vad=apply_vad)
+            logger.debug("DSP aplicado: señal preprocesada (%d muestras, %.2f s)", len(y), len(y) / sr)
+        except AudioPreprocessorError as exc:
+            raise AudioProcessingError(f"Preprocesamiento DSP fallido: {exc}") from exc
+
     duration = librosa.get_duration(y=y, sr=sr)
     if duration < 0.5:
-        raise AudioProcessingError(f"Audio demasiado corto: {duration:.2f}s; mínimo requerido: 0.5s")
+        raise AudioProcessingError(f"Audio útil insuficiente: {duration:.2f}s; mínimo requerido: 0.5s")
 
     f0 = extract_fundamental_frequency(y, sr)
     if f0 is None or len(f0) == 0:
@@ -195,8 +222,10 @@ def calculate_jitter(f0: np.ndarray, sr: int) -> Dict[str, float]:
     if mean_f0 <= 0:
         return zeros
 
-    jitter_percent = (np.mean(diffs) / mean_f0) * 100
-    jitter_abs = np.mean(diffs)
+    # UCI stores Jitter(%) as a ratio (fraction), not multiplied by 100
+    jitter_percent = np.mean(diffs) / mean_f0
+    # Jitter(Abs) is period jitter in seconds: mean |T_i+1 - T_i| where T = 1/f0
+    jitter_abs = float(np.mean(np.abs(np.diff(1.0 / f0_clean))))
 
     rap = 0.0
     if len(f0_clean) >= 3:
@@ -204,7 +233,7 @@ def calculate_jitter(f0: np.ndarray, sr: int) -> Dict[str, float]:
             np.abs(f0_clean[i] - np.mean(f0_clean[i - 1 : i + 2]))
             for i in range(1, len(f0_clean) - 1)
         ]
-        rap = np.mean(rap_values) / mean_f0 * 100
+        rap = np.mean(rap_values) / mean_f0
 
     ppq = 0.0
     if len(f0_clean) >= 5:
@@ -212,11 +241,11 @@ def calculate_jitter(f0: np.ndarray, sr: int) -> Dict[str, float]:
             np.abs(f0_clean[i] - np.mean(f0_clean[i - 2 : i + 3]))
             for i in range(2, len(f0_clean) - 2)
         ]
-        ppq = np.mean(ppq_values) / mean_f0 * 100
+        ppq = np.mean(ppq_values) / mean_f0
 
     ddp = 0.0
     if len(diffs) >= 2:
-        ddp = np.mean(np.abs(np.diff(diffs))) / mean_f0 * 100
+        ddp = np.mean(np.abs(np.diff(diffs))) / mean_f0
 
     return {
         "MDVP:Jitter(%)": float(jitter_percent),
@@ -266,26 +295,27 @@ def calculate_shimmer(y: np.ndarray, f0: np.ndarray, sr: int) -> Dict[str, float
     if mean_amp <= 0:
         return zeros
 
-    shimmer = (np.mean(amp_diffs) / mean_amp) * 100
-    shimmer_db = 20 * np.log10(1 + shimmer / 100) if shimmer > 0 else 0.0
+    # UCI stores Shimmer as a ratio (fraction), not multiplied by 100
+    shimmer = np.mean(amp_diffs) / mean_amp
+    shimmer_db = 20 * np.log10(1 + shimmer) if shimmer > 0 else 0.0
 
     apq3 = 0.0
     if len(amplitudes) >= 3:
         apq3 = np.mean([
             np.abs(amplitudes[i] - np.mean(amplitudes[i - 1 : i + 2]))
             for i in range(1, len(amplitudes) - 1)
-        ]) / mean_amp * 100
+        ]) / mean_amp
 
     apq5 = 0.0
     if len(amplitudes) >= 5:
         apq5 = np.mean([
             np.abs(amplitudes[i] - np.mean(amplitudes[i - 2 : i + 3]))
             for i in range(2, len(amplitudes) - 2)
-        ]) / mean_amp * 100
+        ]) / mean_amp
 
     dda = 0.0
     if len(amp_diffs) >= 2:
-        dda = np.mean(np.abs(np.diff(amp_diffs))) / mean_amp * 100
+        dda = np.mean(np.abs(np.diff(amp_diffs))) / mean_amp
 
     return {
         "MDVP:Shimmer": float(shimmer),
@@ -298,7 +328,24 @@ def calculate_shimmer(y: np.ndarray, f0: np.ndarray, sr: int) -> Dict[str, float
 
 
 def calculate_hnr(y: np.ndarray, sr: int) -> Dict[str, float]:
-    """Calcula NHR y HNR mediante análisis cepstral."""
+    """Calcula NHR y HNR con Parselmouth (principal) y cepstrum como respaldo."""
+
+    # Método principal: Parselmouth — mismo extractor que voice_biomarkers.py
+    if PRAAT_AVAILABLE:
+        try:
+            from parselmouth.praat import call as praat_call
+            sound = parselmouth.Sound(y, sr)
+            harmonicity = praat_call(sound, "To Harmonicity (cc)", 0.01, 75.0, 0.1, 1.0)
+            hnr_db = float(praat_call(harmonicity, "Get mean", 0, 0))
+            # Praat devuelve -200 para tramas no sonorizadas; descartarlas
+            if np.isfinite(hnr_db) and hnr_db > -200:
+                # NHR = N/H = 10^(-HNR_dB/10)  (inverso lineal del HNR en dB)
+                nhr = float(10 ** (-hnr_db / 10))
+                return {"NHR": nhr, "HNR": hnr_db}
+        except Exception as exc:
+            logger.debug("Parselmouth HNR falló: %s", exc)
+
+    # Respaldo: análisis cepstral
     try:
         spectrum = np.abs(np.fft.rfft(y))
         log_spectrum = np.log(spectrum + 1e-10)

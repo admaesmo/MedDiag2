@@ -49,6 +49,8 @@ El proyecto integra:
 | Feature Store | ✅ Implementado | Versionado con `extractor_version` y `feature_schema_version` |
 | Inferencia | ✅ Funcional | Predicción preliminar con probabilidad |
 | Control de calidad de audio | ✅ Implementado | Servicio `quality_control.py` activo en el pipeline |
+| Preprocesamiento DSP | ✅ Implementado | Cascada HP 70 Hz → LP 5 kHz → VAD trim → normalización RMS adaptativa |
+| Análisis de múltiples tomas | ✅ Implementado | Sesiones de 2-5 tomas con agregación por mediana y `session_confidence` |
 | Frontend (grabación/carga) | ✅ Funcional | Interfaz de usuario con autenticación |
 | Parselmouth como extractor base | ✅ Implementado | Endpoint `/audio/biomarkers/extract` con Parselmouth |
 | Validación clínica | ❌ Pendiente | Sin evaluación con pacientes reales |
@@ -120,19 +122,26 @@ Audio del usuario
       │
       ▼
 ┌──────────────────┐
-│  Control de       │  Calidad: duración, SNR, clipping, silencio
-│  Calidad (QA/QC)  │  (quality_control.py)
+│  Control de       │  Calidad sobre señal cruda: duración, SNR,
+│  Calidad (QA/QC)  │  clipping, silencio  (quality_control.py)
 └──────────────────┘
       │
       ▼
 ┌──────────────────┐
 │  Decodificación   │  Librosa (principal) → Pydub (fallback)
-│  y normalización │  Mono, frecuencia controlada
+│                   │  Mono, 22 kHz
 └──────────────────┘
       │
       ▼
+┌──────────────────────────────────┐
+│  Preprocesamiento DSP             │  audio_filters.py
+│  HP 70 Hz → LP 5 kHz → VAD trim  │  Butterworth ord. 4, sosfiltfilt
+│  → Normalización RMS adaptativa   │  (fase cero, sin clipping)
+└──────────────────────────────────┘
+      │
+      ▼
 ┌──────────────────┐
-│  Extracción F0    │  librosa.pyin → Parselmouth → SciPy (fallback)
+│  Extracción F0    │  pYIN → Parselmouth → Autocorrelación
 └──────────────────┘
       │
       ▼
@@ -142,13 +151,16 @@ Audio del usuario
 └────────────────────────┘
       │
       ▼
+┌──────────────────┐     ┌─────────────────────────────────┐
+│  Feature Store    │     │  Sesión multi-toma (opcional)   │
+│  (toma única)     │     │  Mediana de N tomas + CV inter- │
+└──────────────────┘     │  toma → session_confidence      │
+      │                  └─────────────────────────────────┘
+      └──────────┬────────────────────┘
+                 ▼
 ┌──────────────────┐
-│  Feature Store    │  Persistencia con versión del extractor
-└──────────────────┘
-      │
-      ▼
-┌──────────────────┐
-│  Inferencia       │  Modelo de Parkinson → predicción + probabilidad
+│  Inferencia       │  StandardScaler → XGBClassifier
+│                   │  predicción + probabilidad
 └──────────────────┘
       │
       ▼
@@ -223,15 +235,20 @@ El modelo activo de Parkinson fue sometido a un proceso de **optimización y ree
 |---------|-----------|
 | `app/model_predict.py` | Carga y ejecución de modelos ML en producción |
 | `app/services/audio_processing.py` | Extracción de biomarcadores acústicos (pipeline principal) |
-| `app/services/audio_pipeline.py` | Orquestación del pipeline completo de audio |
+| `app/services/audio_filters.py` | Preprocesamiento DSP: HP 70 Hz, LP 5 kHz, VAD trim, normalización RMS sin clipping |
+| `app/services/audio_pipeline.py` | Orquestación del pipeline completo de audio (toma única) |
+| `app/services/session_pipeline.py` | Agregación multi-toma: mediana por biomarcador, CV inter-toma, `session_confidence` |
 | `app/services/nonlinear_features.py` | Cálculo de biomarcadores no lineales (DFA, D2, RPDE, PPE, spread1, spread2) |
 | `app/services/voice_biomarkers.py` | Extracción de biomarcadores vía Parselmouth (endpoint directo) |
 | `app/services/quality_control.py` | Control de calidad de audio (QA/QC) |
 | `app/api/voice_biomarkers.py` | Endpoint REST para extracción directa de biomarcadores |
-| `app/api/audio.py` | Endpoints REST de carga y procesamiento de audio |
-| `app/models.py` | Modelos SQLAlchemy (incluye `BiomarkerFeature`, `AudioQualityReport`) |
+| `app/api/audio.py` | Endpoints REST de carga y procesamiento de audio (toma única) |
+| `app/api/sessions.py` | Endpoints REST de sesiones multi-toma (`/sessions`) |
+| `app/models.py` | Modelos SQLAlchemy (incluye `VoiceSession`, `BiomarkerFeature`, `AudioQualityReport`) |
 | `app/schemas/voice_biomarkers.py` | Schemas Pydantic para biomarcadores de voz |
 | `app/schemas/quality_control.py` | Schemas Pydantic para control de calidad |
+| `app/schemas/sessions.py` | Schemas Pydantic para sesiones multi-toma |
+| `alembic/versions/005_voice_sessions.py` | Migración: tabla `voice_sessions` + columnas `session_id`, `take_number` |
 | `saved_models/parkinsons_model_smote.sav` | Modelo XGBoost entrenado con SMOTE (producción activa) |
 | `saved_models/parkinsons_scaler_smote.sav` | Scaler para el modelo SMOTE |
 | `notebooks/MedDiag_Parkinson_SMOTE_Colab.ipynb` | Notebook de entrenamiento y optimización con SMOTE |
@@ -350,17 +367,21 @@ MedDiag2/
 │   ├── model_predict.py          # Carga y ejecución de modelos ML
 │   ├── models.py                 # Modelos SQLAlchemy
 │   ├── api/                      # Endpoints REST
-│   │   ├── audio.py              # Endpoints de audio
+│   │   ├── audio.py              # Endpoints de audio (toma única)
 │   │   ├── auth.py               # Autenticación
+│   │   ├── sessions.py           # Endpoints de sesiones multi-toma
 │   │   └── voice_biomarkers.py   # Biomarcadores de voz
 │   ├── schemas/                  # Schemas Pydantic
+│   │   └── sessions.py           # Schemas de sesiones
 │   ├── services/                 # Lógica de negocio
-│   │   ├── audio_pipeline.py     # Pipeline completo de audio
-│   │   ├── audio_processing.py   # Procesamiento de señales
+│   │   ├── audio_filters.py      # Preprocesamiento DSP (HP/LP/VAD/RMS)
+│   │   ├── audio_pipeline.py     # Pipeline completo de audio (toma única)
+│   │   ├── audio_processing.py   # Extracción de biomarcadores
 │   │   ├── audio_service.py      # Servicio de audio
 │   │   ├── nonlinear_features.py # Biomarcadores no lineales
 │   │   ├── quality_control.py    # Control de calidad de audio
-│   │   └── voice_biomarkers.py   # Extracción de biomarcadores
+│   │   ├── session_pipeline.py   # Agregación multi-toma y sesiones
+│   │   └── voice_biomarkers.py   # Extracción de biomarcadores vía Praat
 │   └── utils/                    # Utilidades
 ├── frontend/web/                 # Frontend Next.js
 │   ├── app/                      # App Router
@@ -408,12 +429,15 @@ MedDiag2/
 
 ## Trabajo Futuro
 
+- [x] Implementar preprocesamiento DSP (HP/LP/VAD/normalización) — `audio_filters.py`
+- [x] Implementar análisis de múltiples tomas con agregación robusta — `session_pipeline.py`
 - [ ] Congelar extractor clásico con Parselmouth/Praat para F0, jitter, shimmer y HNR
 - [ ] Reemplazar uso de `0.0` por política `partial_features` o `missing_features`
-- [ ] Diseñar pruebas con 3 repeticiones por persona, vocal `/a/` de 3-5s
+- [ ] Validar parámetros DSP con audios controlados (medir impacto real en biomarcadores)
+- [ ] Integrar flujo multi-toma en el frontend (interfaz "Toma 1 de 3")
 - [ ] Comparar Parselmouth vs openSMILE y DisVoice
 - [ ] Evaluar modelos: Random Forest, SVM, Logistic Regression, XGBoost
-- [ ] Reentrenar modelo solo con features del pipeline definitivo
+- [ ] Reentrenar modelo solo con features del pipeline definitivo (con DSP aplicado)
 - [ ] Explorar embeddings profundos (Wav2Vec2, HuBERT, WavLM) con banco de audios suficiente
 
 ---

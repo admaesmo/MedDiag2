@@ -20,6 +20,54 @@ from app.utils.database import Base
 
 
 # ---------------------------------------------------------------------------
+# Sesión de voz (múltiples tomas para un análisis robusto)
+# ---------------------------------------------------------------------------
+
+class VoiceSession(Base):
+    __tablename__ = "voice_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(_uuid.uuid4()))
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    max_takes = Column(Integer, nullable=False, default=3)
+    status = Column(
+        String(50), nullable=False, default="collecting",
+        # collecting → ready → processing → completed | failed
+    )
+
+    # Resultados de agregación (se rellenan al analizar)
+    aggregated_features_json = Column(Text, nullable=True)
+    variance_json = Column(Text, nullable=True)       # coeficiente de variación por biomarcador
+    valid_takes_count = Column(Integer, nullable=True)
+    session_confidence = Column(Float, nullable=True)  # 0 (inconsistente) → 1 (estable)
+
+    diagnosis_id = Column(
+        Integer, ForeignKey("diagnoses.id", ondelete="SET NULL"), nullable=True
+    )
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('collecting','ready','processing','completed','failed','cancelled')",
+            name="ck_session_status",
+        ),
+        CheckConstraint("max_takes BETWEEN 2 AND 5", name="ck_session_max_takes"),
+    )
+
+    user = relationship("User", back_populates="voice_sessions")
+    takes = relationship(
+        "AudioRecord",
+        back_populates="session",
+        foreign_keys="[AudioRecord.session_id]",
+        order_by="AudioRecord.take_number",
+    )
+    diagnosis = relationship("Diagnosis", foreign_keys=[diagnosis_id])
+
+
+# ---------------------------------------------------------------------------
 # Identidad y acceso
 # ---------------------------------------------------------------------------
 
@@ -51,6 +99,7 @@ class User(Base):
     diagnoses = relationship("Diagnosis", back_populates="user")
     roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
     audio_records = relationship("AudioRecord", back_populates="user", cascade="all, delete-orphan")
+    voice_sessions = relationship("VoiceSession", back_populates="user", cascade="all, delete-orphan")
 
 
 class Role(Base):
@@ -90,6 +139,12 @@ class AudioRecord(Base):
     uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(_uuid.uuid4()))
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
+    # Sesión de múltiples tomas (nullable → retrocompatible con audios sueltos)
+    session_id = Column(
+        Integer, ForeignKey("voice_sessions.id", ondelete="SET NULL"), nullable=True
+    )
+    take_number = Column(Integer, nullable=True)  # 1, 2, 3 dentro de la sesión
+
     source_type = Column(String(50), default="upload")  # upload, microphone, whatsapp
     original_filename = Column(Text)
     stored_filename = Column(Text, nullable=False)
@@ -121,6 +176,11 @@ class AudioRecord(Base):
     )
 
     user = relationship("User", back_populates="audio_records")
+    session = relationship(
+        "VoiceSession",
+        back_populates="takes",
+        foreign_keys=[session_id],
+    )
     biomarker_feature_sets = relationship(
         "BiomarkerFeature",
         back_populates="audio_record",
