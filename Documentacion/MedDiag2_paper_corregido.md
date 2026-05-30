@@ -174,6 +174,14 @@ La ruta actual se organiza en capas progresivas, como se describe en la Tabla II
 
 La decisión metodológica más importante es separar responsabilidades: el audio no es el centro del sistema; el centro es la confiabilidad del biomarcador que llega al modelo.
 
+![Arquitectura reducida](Documentacion/figures/arquitectura%20reducida.png)
+
+*Figura — Arquitectura reducida:* vista simplificada de las capas principales (captura, preprocesamiento, control de calidad, extracción y persistencia). Útil como Figura introductoria en la Sección VI.
+
+![Arquitectura expandida](Documentacion/figures/arquitectura%20expandida.png)
+
+*Figura — Arquitectura expandida:* diagrama detallado que muestra componentes backend (FastAPI), servicios de extracción, Feature Store, colas de procesamiento asíncrono y la integración con el frontend. Se recomienda situarla en el anexo técnico o después del pipeline si se necesita mayor detalle.
+
 El shimmer es el biomarcador más beneficiado por este preprocesamiento: su cálculo extrae `max(|ventana|)` por período de F0, y el ruido de alta frecuencia infla sistemáticamente ese máximo en señales sin filtrar. El HNR por análisis cepstral también mejora, ya que el ruido de banda ancha distorsiona la relación entre el pico cepstral (armónico) y la energía residual (ruido). Los biomarcadores no lineales (DFA, D2, RPDE) se benefician indirectamente al recibir una señal con geometría de atractor más limpia.
 
 ### E. Extracción de Frecuencia Fundamental
