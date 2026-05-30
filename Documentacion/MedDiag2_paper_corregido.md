@@ -208,7 +208,7 @@ FUNCIÓN extraer_F0(señal, sr, fmin=75 Hz, fmax=300 Hz):
   LANZAR AudioProcessingError("Sin F0 disponible")
 ```
 
-**Pseudocódigo 3**: Estrategia escalonada de extracción de F0 en `audio_processing.py`. La ruta utilizada se registra en log para facilitar la auditoría del extractor.
+**Pseudocódigo 3** (ver Apéndice A (pseudocódigos, commit 4c2406a)): Estrategia escalonada de extracción de F0 en `audio_processing.py`. La ruta utilizada se registra en log para facilitar la auditoría del extractor.
 
 ### F. Extracción de Biomarcadores
 
@@ -263,7 +263,7 @@ FUNCIÓN calcular_biomarcadores_nolineales(señal, f0):
   RETORNAR features, faltantes
 ```
 
-**Pseudocódigo 4**: Extracción de biomarcadores no lineales en `nonlinear_features.py`. Cada función falla de forma independiente; los fallos se reportan en `faltantes` sin silenciarse con 0.0 (ver XIII.4).
+**Pseudocódigo 4** (ver Apéndice A (pseudocódigos, commit 4c2406a)): Extracción de biomarcadores no lineales en `nonlinear_features.py`. Cada función falla de forma independiente; los fallos se reportan en `faltantes` sin silenciarse con 0.0 (ver XIII.4).
 
 ### G. Análisis de Múltiples Tomas
 
@@ -281,7 +281,7 @@ FUNCIÓN agregar_tomas(lista_feature_sets):
   RETORNAR mediana, cv, session_confidence
 ```
 
-**Pseudocódigo 5**: Agregación multi-toma en `session_pipeline.py`. La mediana es robusta frente a una toma con valores atípicos (outlier de grabación). El coeficiente de variación inter-toma (`cv`) tiene valor diagnóstico propio: alta variabilidad en jitter o shimmer entre tomas del mismo paciente es indicativa de inestabilidad fonatoria real, no de ruido de grabación.
+**Pseudocódigo 5** (ver Apéndice A (pseudocódigos, commit 4c2406a)): Agregación multi-toma en `session_pipeline.py`. La mediana es robusta frente a una toma con valores atípicos (outlier de grabación). El coeficiente de variación inter-toma (`cv`) tiene valor diagnóstico propio: alta variabilidad en jitter o shimmer entre tomas del mismo paciente es indicativa de inestabilidad fonatoria real, no de ruido de grabación.
 
 La `session_confidence` resume la consistencia global del conjunto de tomas. Un valor cercano a 1 indica que las tomas fueron homogéneas y el vector agregado es estable; un valor bajo sugiere revisar las condiciones de grabación o la calidad individual de las tomas. El modelo XGBoost recibe el mismo vector de 22 medianas, preservando compatibilidad sin reentrenamiento.
 
@@ -499,7 +499,7 @@ FUNCIÓN pipeline_completo(registro_audio, usuario):
   RETORNAR {features, faltantes, diagnóstico.id, prob}
 ```
 
-**Pseudocódigo 6**: Pipeline principal en `audio_pipeline.py`. El umbral 0.85, superior al neutro (0.5), eleva la especificidad en condiciones de audio real donde imperfecciones acústicas tienden a inflar la probabilidad predicha. El StandardScaler se mantiene del pipeline anterior para consistencia con el flujo de datos existente.
+**Pseudocódigo 6** (ver Apéndice A (pseudocódigos, commit 4c2406a)): Pipeline principal en `audio_pipeline.py`. El umbral 0.85, superior al neutro (0.5), eleva la especificidad en condiciones de audio real donde imperfecciones acústicas tienden a inflar la probabilidad predicha. El StandardScaler se mantiene del pipeline anterior para consistencia con el flujo de datos existente.
 
 ### G. Modelos Adicionales y Consideraciones de Deep Learning
 
