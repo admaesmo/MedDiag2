@@ -155,7 +155,7 @@ XGBoost (eXtreme Gradient Boosting), propuesto por Chen y Guestrin [17], extiend
 
 ---
 
-## VI. Ruta Técnica Actual
+## VI. Arquitectura y Funcionamiento del Sistema
 
 La ruta actual se organiza en capas progresivas, como se describe en la Tabla II.
 
@@ -174,183 +174,7 @@ La ruta actual se organiza en capas progresivas, como se describe en la Tabla II
 
 La decisión metodológica más importante es separar responsabilidades: el audio no es el centro del sistema; el centro es la confiabilidad del biomarcador que llega al modelo.
 
----
-
-## VII. Arquitectura del Sistema
-
-MedDiag utiliza una arquitectura web dividida en frontend, backend, servicios de procesamiento y persistencia.
-
-### A. Frontend
-
-El frontend está construido en Next.js con App Router. Las rutas del módulo de Parkinson están protegidas bajo el grupo de acceso `(private)`, que requiere autenticación JWT gestionada con Zustand. La aplicación ofrece soporte multilingüe en español, inglés y portugués (Brasil) mediante diccionarios estáticos y un proveedor de contexto de locale.
-
-El flujo de captura de voz sigue cuatro etapas obligatorias: (1) modal de consentimiento informado con tres casillas de condiciones; (2) modal de guía de grabación con instrucciones para la vocal sostenida /a/; (3) panel de captura multi-toma que permite registrar hasta 3 tomas, controlar cada una individualmente (grabar, previsualizar, eliminar) y habilita el botón de análisis cuando hay ≥ 2 tomas válidas; (4) modal de previsualización con un segundo aviso de consentimiento antes de confirmar el análisis.
-
-Una vez activado el análisis, TanStack Query consulta el estado del procesamiento cada 2 segundos hasta recibir el resultado. Los resultados se presentan como probabilidad de Parkinson, indicador `session_confidence` y tarjetas de biomarcadores (pitch_mean, pitch_min, pitch_max, jitter_local, shimmer_local, hnr_mean).
-
-### B. Backend
-
-El backend está construido con FastAPI. Expone los siguientes endpoints REST:
-
-- `POST /audio/upload` — Carga de audio
-- `GET /audio/me` — Listar audios del usuario
-- `GET /audio/{audio_id}` — Consultar un audio específico
-- `POST /audio/{audio_id}/process` — Procesar un audio
-- `GET /audio/{audio_id}/features` — Obtener biomarcadores
-- `GET /audio/{audio_id}/quality` — Consultar el último reporte de calidad
-- `POST /audio/{audio_id}/quality/check` — Ejecutar o repetir control de calidad
-- `POST /audio/batch-process` — Procesar lotes de audios
-- `GET /audio/analysis/summary` — Resumen de análisis
-- `POST /sessions` — Crear sesión de voz multi-toma
-- `POST /sessions/{id}/takes` — Asociar una toma a la sesión
-- `POST /sessions/{id}/analyze` — Disparar análisis agregado de la sesión
-
-### C. Almacenamiento y Trazabilidad
-
-El sistema guarda los archivos de audio en un backend de almacenamiento configurable y registra metadatos en base de datos relacional. Cada audio conserva información como usuario, nombre original, tipo MIME, tamaño, ruta de almacenamiento, estado de procesamiento, notas y marcas temporales.
-
-La entidad `BiomarkerFeature` almacena el conjunto de biomarcadores asociado a un audio, junto con `extractor_version`, `feature_schema_version`, `features_json`, `missing_features_json` e `is_partial`. Esta separación permite auditar los resultados y comparar versiones del extractor.
-
-La entidad `AudioQualityReport`, asociada a cada registro de audio, almacena el veredicto de calidad (`is_valid`), la puntuación (`quality_score`), la razón de rechazo y métricas de señal: duración, energía RMS, amplitud pico, recorte, SNR, proporción de silencio, piso de ruido y ancho de banda. Con ello, el sistema convierte la calidad del audio en un artefacto persistido y consultable, no en una simple advertencia documental.
-
-La entidad `VoiceSession` agrupa entre 2 y 3 tomas de un mismo usuario y almacena el vector de medianas (`aggregated_features_json`), el coeficiente de variación inter-toma (`variance_json`), el indicador de reproducibilidad (`session_confidence`) y el identificador del diagnóstico generado.
-
-```mermaid
-graph TB
-    subgraph Cliente["Cliente — Navegador (Next.js)"]
-        UI["Interfaz Web\ni18n · Zustand · TanStack Query"]
-        FLOW["Flujo de sesión\nConsentimiento → Guía → Captura → Preview"]
-    end
-
-    subgraph BackendAPI["Backend — FastAPI"]
-        EP1["POST /audio/upload\nPOST /sessions"]
-        EP2["POST /audio/{id}/process\nPOST /sessions/{id}/analyze"]
-        EP3["GET /audio/{id}/features\nGET /sessions/{id}"]
-        EP4["GET /audio/{id}/quality"]
-    end
-
-    subgraph Pipeline["Servicios de Procesamiento"]
-        QC["Control de Calidad\nAudioQualityReport"]
-        DSP["Preprocesamiento DSP\nHP 70Hz · LP 5kHz · VAD · RMS"]
-        F0["Extracción F0\npYIN → Praat → Autocorr"]
-        FEATS["Biomarcadores clásicos\nJitter · Shimmer · HNR"]
-        NL["Biomarcadores no lineales\nDFA · D2 · PPE · RPDE · spread"]
-        AGG["Agregación multi-toma\nMediana · CV · session_confidence"]
-        INFER["Inferencia\nStandardScaler + XGBoost"]
-    end
-
-    subgraph Persistencia["Persistencia"]
-        STORE[("Almacenamiento\nde Audio")]
-        DB[("Base de Datos")]
-        FS[("Feature Store\nBiomarkerFeature")]
-        VS[("VoiceSession")]
-    end
-
-    UI --> FLOW
-    FLOW -->|"≥2 tomas válidas → Analizar"| EP2
-    UI -->|Subir toma| EP1
-    UI -->|Consultar resultado| EP3
-    UI -->|Ver calidad| EP4
-    EP1 --> STORE
-    EP1 --> DB
-    EP2 --> QC
-    QC -->|Aprobado| DSP
-    DSP --> F0
-    F0 --> FEATS
-    F0 --> NL
-    FEATS --> FS
-    NL --> FS
-    FS --> AGG
-    AGG --> INFER
-    INFER --> VS
-    VS --> DB
-    INFER -->|Diagnóstico| DB
-```
-
-**Figura 1**: Arquitectura general de MedDiag. El frontend Next.js gestiona el flujo de sesión multi-toma y se comunica con los endpoints REST del backend FastAPI, que coordina el pipeline DSP, la persistencia en Feature Store y la inferencia agregada sobre el modelo XGBoost.
-
----
-
-## VIII. Funcionamiento del Módulo de Análisis de Voz
-
-### A. Carga del Audio
-
-El usuario envía un archivo de audio al endpoint de carga. El sistema valida tipo y tamaño, guarda el archivo en almacenamiento y crea un registro en base de datos. Luego marca el audio como `processing` y ejecuta el procesamiento en segundo plano.
-
-### B. Decodificación
-
-El servicio intenta cargar el audio con Librosa. Si la decodificación falla y Pydub está disponible, lo utiliza como mecanismo alternativo. El sistema exige una duración mínima de 0.5 segundos para evitar procesar muestras demasiado cortas.
-
-### C. Control de Calidad de Audio
-
-Antes de extraer biomarcadores, el pipeline ejecuta una compuerta de control de calidad. Este módulo carga el audio, lo decodifica y calcula métricas de validez de señal: duración mínima, razón de recorte, energía RMS, proporción de silencio y relación señal-ruido. También estima piso de ruido y ancho de banda ocupado.
-
-El resultado se persiste como `AudioQualityReport`. Si el audio supera el control, el estado avanza a `quality_checked` y continúa hacia la extracción de biomarcadores. Si falla, se marca como `rejected` con una explicación: duración insuficiente, saturación, baja energía, exceso de silencio o SNR deficiente. Esta compuerta evita que el modelo reciba vectores derivados de señales degradadas.
-
-```
-FUNCIÓN analizar_calidad(registro_audio):
-  señal, sr ← decodificar(registro_audio, tasa_nativa)
-  duración ← longitud(señal) / sr
-  SI duración < 0.8 s → RECHAZAR("Duración insuficiente")
-
-  rms          ← √(media(señal²))
-  pico         ← max(|señal|)
-  razón_recorte ← #{|señal| ≥ 0.98} / longitud(señal)
-  SI razón_recorte > 0.01 → RECHAZAR("Saturación detectada")
-  SI rms < 0.005         → RECHAZAR("Energía insuficiente")
-
-  tramas        ← segmentar(señal, marco=20 ms)
-  razón_silencio ← #{rms_trama < 0.01·pico} / #{tramas}
-  SI razón_silencio > 0.60 → RECHAZAR("Exceso de silencio")
-
-  snr_db ← 20·log10(media(RMS_top25%) / media(RMS_bot25%))
-  SI snr_db < 10 dB → RECHAZAR("SNR insuficiente")
-
-  RETORNAR aprobado(puntuación, métricas)
-```
-
-**Pseudocódigo 1**: Compuerta QA/QC de `quality_control.py`. Los umbrales son configurables y deben validarse con audios controlados (ver XVI.3).
-
-### D. Preprocesamiento DSP
-
-Una vez que el audio supera la compuerta QA/QC, la señal decodificada se somete a una cascada de filtros digitales antes de la extracción de biomarcadores. Este paso opera sobre una copia de la señal exclusiva para el extractor; el módulo de control de calidad continúa recibiendo la señal cruda para conservar la interpretabilidad de sus métricas.
-
-La cascada sigue el siguiente orden, justificado en términos de la física de la señal:
-
-```
-FUNCIÓN preprocesar_dsp(señal, sr):
-
-  // 1. Filtro paso-alto — Butterworth SOS orden 4, fc = 70 Hz, fase cero
-  //    Elimina rumble, interferencias eléctricas y DC offset implícito.
-  //    fc = 70 Hz deja margen sobre fmin = 75 Hz de pYIN/Praat,
-  //    cubriendo casos de bradifonía documentada en Parkinson (F0 ≈ 70-75 Hz).
-  señal ← sosfiltfilt(sos_hp, señal)
-
-  // 2. Filtro paso-bajo — Butterworth SOS orden 4, fc = 5000 Hz, fase cero
-  //    Conserva formantes (F1-F3 de /a/ < 3 kHz) y armónicos útiles
-  //    para medidas de disfonía, eliminando ruido de alta frecuencia
-  //    que infla max(|ventana|) en el cálculo de shimmer.
-  señal ← sosfiltfilt(sos_lp, señal)
-
-  // 3. VAD por recorte (Voice Activity Detection)
-  //    Elimina silencios de inicio y fin con umbral top_db = 40 dB.
-  //    Garantiza que la normalización y la extracción operen sobre
-  //    el segmento vocal, no sobre ruido o silencio ambiental.
-  señal, _ ← librosa.effects.trim(señal, top_db=40)
-  SI longitud(señal) / sr < 0.5 s → LANZAR error("Fonación insuficiente")
-
-  // 4. Normalización RMS adaptativa — sin clipping
-  //    Homogeneiza el volumen entre grabaciones de distintos micrófonos.
-  //    Ganancia limitada por RMS objetivo (0.1), por pico máximo (0.95)
-  //    y por un techo global (10×). Sin clip posterior: el clip introduce
-  //    armónicos espurios que degradan HNR, D2 y PPE.
-  gain ← min(0.1 / rms(señal), 0.95 / max(|señal|), 10)
-  señal ← señal × gain
-
-  RETORNAR señal
-```
-
-**Pseudocódigo 2**: Cascada de preprocesamiento DSP en `audio_filters.py`. El filtrado bidireccional (`sosfiltfilt`) garantiza fase cero: no hay desfase temporal de los ciclos de pitch, condición necesaria para el cálculo correcto de Jitter. Los filtros se diseñan en formato SOS (*Second-Order Sections*) para estabilidad numérica en frecuencias de corte bajas relativas al Nyquist.
+Successfully merged architecture, pipeline and functionality sections into a unified section; added figure file references and roadmap to Apéndice A.
 
 El shimmer es el biomarcador más beneficiado por este preprocesamiento: su cálculo extrae `max(|ventana|)` por período de F0, y el ruido de alta frecuencia infla sistemáticamente ese máximo en señales sin filtrar. El HNR por análisis cepstral también mejora, ya que el ruido de banda ancha distorsiona la relación entre el pico cepstral (armónico) y la energía residual (ruido). Los biomarcadores no lineales (DFA, D2, RPDE) se benefician indirectamente al recibir una señal con geometría de atractor más limpia.
 
@@ -797,6 +621,178 @@ La **Fase 2** construye el pipeline que convierte una grabación real en un vect
 La **Fase 3** establece la primera comparativa formal de clasificadores sobre el dataset UCI Oxford Parkinson. El SVC RBF heredado queda documentado como línea base (AUC-ROC = 0.891 ± 0.061); XGBoost entrenado con SMOTE y validación cruzada estratificada obtiene el mejor desempeño global (AUC-ROC = 0.964 ± 0.021, Recall = 0.952 ± 0.041) y pasa a producción. El análisis de importancia confirma que `spread1`, `Jitter:DDP` y PPE son los descriptores más discriminativos, validando retroactivamente la prioridad del pipeline de extracción.
 
 MedDiag se define expresamente como herramienta académica de tamizaje experimental y no como sistema de diagnóstico clínico. Su estado actual es adecuado para una entrega de desarrollo e investigación aplicada y ofrece una base clara para tres líneas de trabajo futuro: validación externa con corpus en español (PC-GITA, NeuroVoz), consolidación de Parselmouth/Praat como extractor primario y recalibración del umbral de decisión con audios reales etiquetados.
+
+---
+
+## Apéndice A — Pseudocódigos y Algoritmos
+
+Este apéndice presenta versiones completas y parametrizadas de los pseudocódigos citados en el cuerpo del texto. El objetivo es facilitar la reproducibilidad metodológica; las implementaciones ejecutables se encuentran en el repositorio en las rutas indicadas al final de cada pseudocódigo.
+
+A.1 Compuerta QA/QC (quality_control.py)
+
+Propósito: validar que una grabación cumple condiciones mínimas antes de extraer biomarcadores.
+
+Entrada: `registro_audio` (ruta, metadatos). Salida: `aprobado(puntuación, métricas)` o motivo de rechazo.
+
+```
+FUNCIÓN analizar_calidad(registro_audio):
+  señal, sr ← decodificar(registro_audio.ruta, sr_nativo)
+  duración ← longitud(señal) / sr
+  SI duración < DURACION_MINIMA (0.8 s) → RECHAZAR("Duración insuficiente")
+
+  rms ← sqrt(media(señal ** 2))
+  pico ← max(abs(señal))
+  razón_recorte ← contar(|señal| ≥ UMBRAL_RECORTE) / longitud(señal)
+  SI razón_recorte > UMBRAL_RECORTE_MAX (0.01) → RECHAZAR("Saturación detectada")
+  SI rms < RMS_MIN (0.005) → RECHAZAR("Energía insuficiente")
+
+  tramas ← segmentar(señal, marco_ms=20)
+  razón_silencio ← contar(rms_trama < SILENCIO_FACTOR * pico) / #tramas
+  SI razón_silencio > SILENCIO_MAX (0.60) → RECHAZAR("Exceso de silencio")
+
+  snr_db ← 20 * log10(media(RMS_top25%) / media(RMS_bot25%))
+  SI snr_db < SNR_MIN_DB (10) → RECHAZAR("SNR insuficiente")
+
+  puntuación ← combinar_métricas(duración, rms, snr_db, razón_recorte, razón_silencio)
+  RETORNAR aprobado(puntuación, {duración, rms, pico, snr_db, razón_recorte, razón_silencio})
+```
+
+Archivo en repo: `app/services/quality_control.py` (versión de referencia).
+
+A.2 Preprocesamiento DSP (audio_filters.py)
+
+Propósito: filtrar, recortar y normalizar la señal para la extracción de biomarcadores.
+
+Entrada: señal en tiempo, `sr`. Salida: señal preprocesada.
+
+```
+FUNCIÓN preprocesar_dsp(señal, sr):
+  sos_hp ← diseñar_butterworth_hp(fc=70, orden=4, sr)
+  sos_lp ← diseñar_butterworth_lp(fc=5000, orden=4, sr)
+  señal ← sosfiltfilt(sos_hp, señal)
+  señal ← sosfiltfilt(sos_lp, señal)
+  señal, _ ← librosa.effects.trim(señal, top_db=40)
+  SI longitud(señal) / sr < FONACION_MIN (0.5 s) → LANZAR Error("Fonación insuficiente")
+
+  rms_actual ← sqrt(media(señal ** 2))
+  gain ← min(RMS_OBJ / rms_actual, PICO_MAX / max(abs(señal)), GANANCIA_TECHO)
+  señal ← señal * gain
+  RETURN señal
+```
+
+Archivo en repo: `app/services/audio_filters.py`.
+
+A.3 Extracción escalonada de F0 (audio_processing.py)
+
+Propósito: obtener una serie de estimaciones de F0 usando métodos robustos.
+
+Entrada: señal, `sr`, fmin, fmax. Salida: vector F0 por trama.
+
+```
+FUNCIÓN extraer_F0(señal, sr, fmin=75, fmax=300):
+  INTENTAR:
+    f0_pyin ← librosa.pyin(señal, fmin, fmax, sr, frame_length=2048, hop_length=512)
+    válidos ← f0_pyin[NOT NaN]
+    SI len(válidos) >= MIN_F0_VALIDS → RETORNAR válidos, 'pyin'
+  EXCEPTO: pasar
+
+  INTENTAR:
+    sonido ← parselmouth.Sound(señal, sr)
+    pitch ← sonido.to_pitch(time_step=0.01, pitch_floor=fmin, pitch_ceiling=fmax)
+    válidos ← pitch.selected_array['frequency'][pitch.selected_array['frequency'] > 0]
+    SI len(válidos) > 0 → RETORNAR válidos, 'parselmouth'
+  EXCEPTO: pasar
+
+  // último recurso: autocorrelación por trama
+  resultado ← []
+  PARA cada trama en frames(señal, 2048, 512):
+    ac ← autocorrelate(trama)
+    lag ← primer_pico(ac[1:N/2])
+    IF lag y fmin <= sr/lag <= fmax: resultado.append(sr/lag)
+  SI resultado → RETORNAR resultado, 'autocorr'
+  LANZAR AudioProcessingError('Sin F0 disponible')
+```
+
+Archivo en repo: `app/audio_processing.py`.
+
+A.4 Biomarcadores no lineales (nonlinear_features.py)
+
+Propósito: calcular DFA, D2, PPE, RPDE, spread1 y spread2 con implementaciones determinísticas.
+
+Entrada: señal, F0. Salida: diccionario de features y lista de faltantes.
+
+```
+FUNCIÓN calcular_biomarcadores_nolineales(señal, f0):
+  features, faltantes ← {}, []
+  // DFA
+  INTENTAR: features['DFA'] ← compute_dfa(señal)
+  EXCEPTO: faltantes.append('DFA')
+  // D2
+  INTENTAR: features['D2'] ← compute_d2(señal)
+  EXCEPTO: faltantes.append('D2')
+  // PPE
+  INTENTAR: features['PPE'] ← compute_ppe(f0)
+  EXCEPTO: faltantes.append('PPE')
+  // RPDE
+  INTENTAR: features['RPDE'] ← compute_rpde(señal, f0)
+  EXCEPTO: faltantes.append('RPDE')
+  // spread1/2
+  INTENTAR:
+    lp ← log(f0) - median(log(f0))
+    features['spread1'] ← percentile(lp, 10)
+    features['spread2'] ← 0.5 * (percentile(lp, 90) - percentile(lp, 10)) + 0.5 * iqr(lp)
+  EXCEPTO: faltantes.extend(['spread1','spread2'])
+  RETORNAR features, faltantes
+```
+
+Archivo en repo: `app/services/nonlinear_features.py`.
+
+A.5 Agregación multi‑toma y `session_confidence` (session_pipeline.py)
+
+Propósito: combinar tomas válidas por mediana y calcular reproducibilidad inter‑toma.
+
+```
+FUNCIÓN agregar_tomas(lista_feature_sets):
+  mediana, cv ← {}, {}
+  PARA cada biomarcador f en FEATURE_ORDER:
+    valores ← [fs[f] for fs in lista_feature_sets if f in fs and isfinite(fs[f])]
+    SI valores:
+      mediana[f] ← median(valores)
+      cv[f] ← std(valores) / (abs(mean(valores)) + EPS)
+  session_confidence ← 1 - mean(list(cv.values()))
+  RETORNAR mediana, cv, session_confidence
+```
+
+Archivo en repo: `app/services/session_pipeline.py`.
+
+A.6 Pipeline principal de procesamiento e inferencia (audio_pipeline.py)
+
+Propósito: integrar QA/QC, extracción, persistencia y llamada al modelo serializado.
+
+```
+FUNCIÓN pipeline_completo(registro_audio, usuario):
+  reporte ← analizar_calidad(registro_audio)
+  SI NOT reporte.válido:
+    actualizar_estado(registro_audio, 'rejected')
+    LANZAR PipelineError(reporte.motivo)
+
+  features, faltantes ← extraer_biomarcadores(registro_audio.ruta)
+  // sanitizar y validar
+  inválidos ← [f for f in features if not finito(features[f])]
+  faltantes.extend(inválidos)
+  features ← sanitizar_a_rango_uci({k:v for k,v in features.items() if k not in inválidos})
+  persistir(registro_audio.id, features, faltantes, extractor_version, schema_version)
+
+  x ← vector_ordenado(features, PARKINSON_FEATURE_ORDER)
+  x_sc ← StandardScaler.transform(x)
+  prob ← XGBClassifier.predict_proba(x_sc)[1]
+  etiqueta ← 1 if prob >= PARKINSON_THRESHOLD else 0
+  diagnóstico ← crear_diagnóstico(usuario, etiqueta, prob)
+  actualizar_estado(registro_audio, 'processed')
+  RETORNAR {features, faltantes, diagnóstico.id, prob}
+```
+
+Archivo en repo: `app/audio_pipeline.py`.
 
 ---
 
