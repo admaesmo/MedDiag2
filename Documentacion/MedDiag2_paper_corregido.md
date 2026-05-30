@@ -532,6 +532,8 @@ FUNCIÓN pipeline_completo(registro_audio, usuario):
 
 **Pseudocódigo 6** (ver Apéndice A (pseudocódigos, commit 4c2406a)): Pipeline principal en `audio_pipeline.py`. El umbral 0.85, superior al neutro (0.5), eleva la especificidad en condiciones de audio real donde imperfecciones acústicas tienden a inflar la probabilidad predicha. El StandardScaler se mantiene del pipeline anterior para consistencia con el flujo de datos existente.
 
+
+
 ### G. Modelos Adicionales y Consideraciones de Deep Learning
 
 El repositorio incluye como respaldo un `VotingClassifier` que combina XGBoost, Random Forest y Regresión Logística mediante votación blanda (*soft voting*). Este ensemble no está activo en producción, pero puede activarse para evaluar si la combinación de modelos mejora la estabilidad de las predicciones en condiciones de audio real.
