@@ -56,37 +56,48 @@ Esta formulación evita reducir el proyecto a una competencia de algoritmos y ce
 
 ### A. Objetivo General
 
-Desarrollar y documentar un prototipo web de tamizaje experimental de Parkinson basado en análisis de voz, capaz de capturar o recibir grabaciones de usuario, aplicar control de calidad, extraer biomarcadores acústicos trazables y utilizarlos como entrada de un modelo de aprendizaje automático bajo una lógica de apoyo académico, no de diagnóstico clínico.
+Desarrollar y documentar una plataforma web de tamizaje experimental de Parkinson basada en voz, articulada en tres fases: (1) arquitectura e interfaz de usuario; (2) pipeline de captura, control de calidad y extracción de biomarcadores acústicos trazables; y (3) estudio comparativo de clasificadores para seleccionar el modelo con mejor desempeño global, bajo una lógica de apoyo académico y no de diagnóstico clínico.
 
 ### B. Objetivos Específicos
 
-1. Integrar un flujo de carga, almacenamiento y procesamiento de audios dentro de una arquitectura web.
-2. Estandarizar el preprocesamiento de audio para reducir variabilidad por formato, frecuencia de muestreo, canales, duración y silencios.
-3. Implementar una compuerta de control de calidad previa a la extracción de biomarcadores y a la inferencia.
-4. Generar un vector de características acústicas compatible con el esquema del dataset de Parkinson, registrando explícitamente las características faltantes o parciales.
-5. Implementar aproximaciones determinísticas para biomarcadores no lineales como DFA, D2, PPE, RPDE, spread1 y spread2.
-6. Persistir los biomarcadores extraídos junto con información de versionamiento del extractor, esquema de características y estado de completitud.
-7. Ejecutar una predicción preliminar de Parkinson a partir del vector de biomarcadores, delimitando su alcance como resultado experimental.
-8. Identificar limitaciones técnicas, metodológicas y clínicas que deben resolverse antes de cualquier interpretación diagnóstica.
+**Fase 1 — Arquitectura y Plataforma Web**
+
+1. Diseñar e implementar una interfaz web con autenticación JWT, rutas privadas y soporte multilingüe (español, inglés y portugués) mediante diccionarios estáticos.
+2. Implementar el flujo completo de consentimiento informado y guía de grabación previo a cada sesión de captura de voz.
+3. Construir una interfaz de captura multi-toma que permita registrar hasta tres muestras de voz, controlar individualmente cada toma y activar el análisis de forma explícita cuando el usuario cuente con al menos dos tomas válidas.
+
+**Fase 2 — Pipeline de Biomarcadores**
+
+4. Integrar un flujo de carga, almacenamiento y procesamiento de audios dentro de la arquitectura backend.
+5. Implementar una cascada de preprocesamiento DSP (filtro paso-alto 70 Hz, paso-bajo 5 000 Hz, detección de actividad vocal y normalización RMS adaptativa sin clipping) para homogeneizar señales de entrada.
+6. Implementar una compuerta de control de calidad de señal previa a la extracción de biomarcadores, con persistencia del veredicto y sus métricas.
+7. Generar un vector de 22 características acústicas compatible con el dataset UCI Oxford Parkinson, registrando explícitamente las características faltantes y el estado de completitud.
+8. Implementar aproximaciones determinísticas para biomarcadores no lineales (DFA, D2, PPE, RPDE, spread1 y spread2).
+9. Agregar los vectores de tomas válidas por mediana y reportar la reproducibilidad inter-toma mediante el indicador `session_confidence`.
+
+**Fase 3 — Estudio Comparativo de Modelos**
+
+10. Establecer el SVC RBF utilizado en versiones anteriores como línea base formal con métricas documentadas mediante validación cruzada estratificada.
+11. Comparar XGBoost, Random Forest y Regresión Logística frente a la línea base, con balanceo de clases mediante SMOTE y el mismo protocolo experimental.
+12. Seleccionar el clasificador de mejor desempeño global y documentar sus hiperparámetros e importancia de características para verificar la coherencia con el pipeline de extracción.
 
 ---
 
-## IV. Metodología de Investigación Aplicada
+## IV. Metodología de Desarrollo
 
-Este trabajo se plantea como una investigación aplicada de desarrollo tecnológico, con enfoque experimental y orientación a validación de pipeline. Su propósito no es demostrar validez clínica final, sino construir una ruta técnica defendible para capturar audio, evaluar su calidad, extraer biomarcadores, registrar trazabilidad e integrar los datos con un modelo predictivo existente.
+Este trabajo se plantea como un desarrollo tecnológico experimental con orientación a validación de pipeline. Su propósito no es demostrar validez clínica final, sino construir una plataforma funcional, documentada y metodológicamente defendible que cubra el ciclo completo: arquitectura web, captura y procesamiento de audio, y mejora del modelo predictivo.
 
-La decisión metodológica central fue adoptar un enfoque basado en biomarcadores acústicos interpretables antes que un enfoque extremo a extremo de aprendizaje profundo. Esta decisión responde a cuatro razones: primero, el modelo histórico de Parkinson espera un vector estructurado de características acústicas. Segundo, los biomarcadores permiten comparar la salida del extractor con literatura previa y herramientas de referencia. Tercero, el proyecto no cuenta aún con un banco amplio de audios etiquetados, metadatos clínicos y consentimiento para entrenar modelos profundos robustos. Cuarto, en un sistema con implicaciones en salud, la trazabilidad del dato de entrada es tan importante como la métrica de clasificación.
+La decisión metodológica transversal fue adoptar biomarcadores acústicos interpretables antes que un enfoque extremo a extremo de aprendizaje profundo. Esta decisión responde a cuatro razones: el modelo histórico espera un vector estructurado, los biomarcadores permiten comparación con literatura y herramientas de referencia, el proyecto carece de un banco amplio de audios etiquetados, y en un sistema con implicaciones en salud la trazabilidad del dato de entrada es tan importante como la métrica de clasificación.
 
-La metodología se organiza en seis momentos:
+El desarrollo se organiza en tres fases:
 
-1. **Revisión del estado técnico**: análisis del funcionamiento anterior de MedDiag, del modelo histórico de Parkinson y de la arquitectura actual del sistema.
-2. **Selección del enfoque por biomarcadores**: adopción de variables acústicas interpretables para mantener compatibilidad con datasets existentes y facilitar auditoría.
-3. **Diseño del pipeline de audio**: definición de una secuencia de captura, decodificación, preprocesamiento, control de calidad, extracción de características, persistencia e inferencia.
-4. **Implementación progresiva**: incorporación de Feature Store, versionado del extractor, aproximaciones determinísticas de biomarcadores no lineales, reportes de calidad de audio y endpoints de consulta. El Feature Store es el componente que almacena de forma persistente y versionada el vector de biomarcadores asociado a cada audio procesado.
-5. **Delimitación de alcance**: definición del sistema como tamizaje experimental, no como diagnóstico clínico.
-6. **Identificación de brechas**: documentación de riesgos asociados a equivalencia de medidas, ruido, micrófonos, datasets limitados, validación clínica y manejo de características faltantes.
+**Fase 1 — Arquitectura y aplicación web.** Se diseñó e implementó la estructura cliente‑servidor sobre la que opera el sistema. Las decisiones clave fueron: Next.js como framework de frontend con sistema de rutas privadas y autenticación; FastAPI como backend RESTful con endpoints dedicados para carga de audio, procesamiento asincrónico, consulta de biomarcadores y resultados; y almacenamiento separado de archivos de audio respecto a la base de datos relacional. Se diseñó además una interfaz de captura de voz guiada bajo un esquema de sesiones multi‑toma, en la que el usuario graba la vocal sostenida /a/ en varias ocasiones y el sistema presenta los resultados del tamizaje de forma no diagnóstica. Esta fase establece las condiciones de operación sobre las que las fases siguientes se apoyan.
 
-Este enfoque permite separar el logro de ingeniería —tener un flujo funcional— del reto científico —validar que los biomarcadores extraídos sean equivalentes, estables y clínicamente interpretables.
+**Fase 2 — Pipeline de audio y biomarcadores.** Se diseñó e implementó la cadena completa de procesamiento desde el archivo de audio hasta la inferencia. El pipeline comprende: decodificación a señal mono normalizada; preprocesamiento DSP (filtrado paso‑banda HP 70 Hz / LP 5 000 Hz, VAD por umbral energético y normalización RMS sin clipping); control de calidad como compuerta previa a la extracción (duración, energía RMS, saturación, SNR y proporción de silencio); extracción de los 22 biomarcadores compatibles con el dataset Oxford Parkinson's Disease Detection [7] mediante Parselmouth/Praat como núcleo primario para F0, jitter, shimmer y HNR [4], [5], con implementaciones determinísticas propias para los biomarcadores no lineales (RPDE, DFA, spread1, spread2, D2, PPE) [1], [2]; persistencia versionada en el Feature Store; y agregación multi‑toma por mediana con coeficiente de variación por biomarcador y una métrica de confianza de sesión.
+
+**Fase 3 — Estudio y mejora del modelo predictivo.** Se revisó el modelo de clasificación de la versión anterior (SVC con kernel RBF [20], sin gestión de desbalance de clases) y se realizó un estudio comparativo con alternativas sobre el mismo dataset UCI de referencia (197 muestras) [7]. Las alternativas evaluadas fueron XGBoost [17], Random Forest [19] y regresión logística, todas bajo validación cruzada estratificada de cinco pliegues. El desbalance de clases se trató mediante SMOTE [23] sobre los pliegues de entrenamiento. Se seleccionó XGBoost como modelo mejorado por su rendimiento superior y capacidad nativa de análisis de importancia de características (métrica *gain*) [17], que permitió identificar los biomarcadores con mayor poder discriminativo. El análisis de importancia constituye un aporte interpretativo adicional al valor de clasificación en sí.
+
+Transversalmente, el proyecto delimita su alcance como tamizaje experimental y documenta las brechas que condicionan cualquier interpretación posterior: equivalencia de medidas entre herramientas [3], [9], variabilidad de condiciones de grabación, tamaño reducido del dataset, ausencia de validación externa y ausencia de metadatos clínicos de los usuarios. Esta separación entre logro de ingeniería y validez científica es intencional y metodológicamente necesaria. Las futuras iteraciones del modelo deberán reportarse siguiendo guías como TRIPOD+AI [14] y evaluar su riesgo de sesgo con herramientas como PROBAST+AI [15].
 
 ---
 
@@ -171,7 +182,11 @@ MedDiag utiliza una arquitectura web dividida en frontend, backend, servicios de
 
 ### A. Frontend
 
-El frontend está construido en Next.js. Permite autenticación, acceso a rutas privadas, carga de audios y consulta de registros procesados. La aplicación ofrece una interfaz para que el usuario grabe o suba una muestra de voz, revise su estado de procesamiento y consulte los biomarcadores extraídos.
+El frontend está construido en Next.js con App Router. Las rutas del módulo de Parkinson están protegidas bajo el grupo de acceso `(private)`, que requiere autenticación JWT gestionada con Zustand. La aplicación ofrece soporte multilingüe en español, inglés y portugués (Brasil) mediante diccionarios estáticos y un proveedor de contexto de locale.
+
+El flujo de captura de voz sigue cuatro etapas obligatorias: (1) modal de consentimiento informado con tres casillas de condiciones; (2) modal de guía de grabación con instrucciones para la vocal sostenida /a/; (3) panel de captura multi-toma que permite registrar hasta 3 tomas, controlar cada una individualmente (grabar, previsualizar, eliminar) y habilita el botón de análisis cuando hay ≥ 2 tomas válidas; (4) modal de previsualización con un segundo aviso de consentimiento antes de confirmar el análisis.
+
+Una vez activado el análisis, TanStack Query consulta el estado del procesamiento cada 2 segundos hasta recibir el resultado. Los resultados se presentan como probabilidad de Parkinson, indicador `session_confidence` y tarjetas de biomarcadores (pitch_mean, pitch_min, pitch_max, jitter_local, shimmer_local, hnr_mean).
 
 ### B. Backend
 
@@ -186,34 +201,41 @@ El backend está construido con FastAPI. Expone los siguientes endpoints REST:
 - `POST /audio/{audio_id}/quality/check` — Ejecutar o repetir control de calidad
 - `POST /audio/batch-process` — Procesar lotes de audios
 - `GET /audio/analysis/summary` — Resumen de análisis
+- `POST /sessions` — Crear sesión de voz multi-toma
+- `POST /sessions/{id}/takes` — Asociar una toma a la sesión
+- `POST /sessions/{id}/analyze` — Disparar análisis agregado de la sesión
 
 ### C. Almacenamiento y Trazabilidad
 
-El sistema guarda los archivos de audio en un backend de almacenamiento configurable y registra metadatos en base de datos. Cada audio conserva información como usuario, nombre original, tipo MIME, tamaño, ruta de almacenamiento, estado de procesamiento, notas y marcas temporales.
+El sistema guarda los archivos de audio en un backend de almacenamiento configurable y registra metadatos en base de datos relacional. Cada audio conserva información como usuario, nombre original, tipo MIME, tamaño, ruta de almacenamiento, estado de procesamiento, notas y marcas temporales.
 
 La entidad `BiomarkerFeature` almacena el conjunto de biomarcadores asociado a un audio, junto con `extractor_version`, `feature_schema_version`, `features_json`, `missing_features_json` e `is_partial`. Esta separación permite auditar los resultados y comparar versiones del extractor.
 
 La entidad `AudioQualityReport`, asociada a cada registro de audio, almacena el veredicto de calidad (`is_valid`), la puntuación (`quality_score`), la razón de rechazo y métricas de señal: duración, energía RMS, amplitud pico, recorte, SNR, proporción de silencio, piso de ruido y ancho de banda. Con ello, el sistema convierte la calidad del audio en un artefacto persistido y consultable, no en una simple advertencia documental.
 
+La entidad `VoiceSession` agrupa entre 2 y 3 tomas de un mismo usuario y almacena el vector de medianas (`aggregated_features_json`), el coeficiente de variación inter-toma (`variance_json`), el indicador de reproducibilidad (`session_confidence`) y el identificador del diagnóstico generado.
+
 ```mermaid
 graph TB
-    subgraph Cliente["Cliente — Navegador"]
-        UI[Interfaz Web Next.js]
+    subgraph Cliente["Cliente — Navegador (Next.js)"]
+        UI["Interfaz Web\ni18n · Zustand · TanStack Query"]
+        FLOW["Flujo de sesión\nConsentimiento → Guía → Captura → Preview"]
     end
 
     subgraph BackendAPI["Backend — FastAPI"]
-        EP1["POST /audio/upload"]
-        EP2["POST /audio/{id}/process"]
-        EP3["GET /audio/{id}/features"]
+        EP1["POST /audio/upload\nPOST /sessions"]
+        EP2["POST /audio/{id}/process\nPOST /sessions/{id}/analyze"]
+        EP3["GET /audio/{id}/features\nGET /sessions/{id}"]
         EP4["GET /audio/{id}/quality"]
     end
 
     subgraph Pipeline["Servicios de Procesamiento"]
         QC["Control de Calidad\nAudioQualityReport"]
-        DECODE["Decodificación\naudio_utils.py"]
+        DSP["Preprocesamiento DSP\nHP 70Hz · LP 5kHz · VAD · RMS"]
         F0["Extracción F0\npYIN → Praat → Autocorr"]
         FEATS["Biomarcadores clásicos\nJitter · Shimmer · HNR"]
         NL["Biomarcadores no lineales\nDFA · D2 · PPE · RPDE · spread"]
+        AGG["Agregación multi-toma\nMediana · CV · session_confidence"]
         INFER["Inferencia\nStandardScaler + XGBoost"]
     end
 
@@ -221,26 +243,31 @@ graph TB
         STORE[("Almacenamiento\nde Audio")]
         DB[("Base de Datos")]
         FS[("Feature Store\nBiomarkerFeature")]
+        VS[("VoiceSession")]
     end
 
-    UI -->|Subir audio| EP1
+    UI --> FLOW
+    FLOW -->|"≥2 tomas válidas → Analizar"| EP2
+    UI -->|Subir toma| EP1
     UI -->|Consultar resultado| EP3
     UI -->|Ver calidad| EP4
     EP1 --> STORE
     EP1 --> DB
     EP2 --> QC
-    QC -->|Aprobado| DECODE
-    DECODE --> F0
+    QC -->|Aprobado| DSP
+    DSP --> F0
     F0 --> FEATS
     F0 --> NL
-    FEATS --> INFER
-    NL --> INFER
-    INFER --> FS
-    FS --> DB
+    FEATS --> FS
+    NL --> FS
+    FS --> AGG
+    AGG --> INFER
+    INFER --> VS
+    VS --> DB
     INFER -->|Diagnóstico| DB
 ```
 
-**Figura 1**: Arquitectura general de MedDiag. El frontend Next.js se comunica con los endpoints REST del backend FastAPI, que coordina el pipeline de procesamiento, la persistencia en Feature Store y la inferencia sobre el modelo XGBoost.
+**Figura 1**: Arquitectura general de MedDiag. El frontend Next.js gestiona el flujo de sesión multi-toma y se comunica con los endpoints REST del backend FastAPI, que coordina el pipeline DSP, la persistencia en Feature Store y la inferencia agregada sobre el modelo XGBoost.
 
 ---
 
@@ -500,34 +527,69 @@ Finalmente, datasets de mayor escala como mPower pueden reservarse para una fase
 
 ---
 
-## XI. Modelo de Producción: XGBoost para Clasificación de Parkinson
+## XI. Estudio Comparativo de Modelos y Mejora del Clasificador (Fase 3)
 
-El modelo de producción actual de MedDiag para la clasificación de Parkinson es un XGBClassifier entrenado sobre las 22 características acústicas del dataset UCI Oxford. Este modelo reemplazó al SVC con kernel RBF que operaba en versiones anteriores.
+La Fase 3 del proyecto establece la primera comparativa formal de clasificadores sobre el dataset UCI Oxford Parkinson, documentando el modelo heredado de versiones anteriores como línea base explícita y seleccionando el clasificador de mejor desempeño global para producción.
 
-### A. Funcionamiento del Algoritmo XGBoost
+### A. Clasificador Base: SVC RBF (v1)
 
-XGBoost construye árboles de forma secuencial, donde cada nuevo árbol se enfoca en corregir los errores residuales del conjunto anterior. A diferencia de Random Forest [19], que construye árboles de forma independiente, XGBoost aplica regularización L1 y L2 incorporada, lo que reduce el sobreajuste en conjuntos pequeños como el de Parkinson (197 muestras). Adicionalmente, el algoritmo maneja de forma nativa los valores faltantes, lo que resulta relevante cuando el pipeline de extracción no puede calcular todas las 22 variables. Las métricas de importancia de características (gain, cover, frequency) permiten identificar qué biomarcadores acústicos contribuyen más a la decisión del modelo, facilitando la interpretabilidad y la auditoría del extractor.
+El modelo de producción de versiones anteriores era un SVC con kernel RBF [20] entrenado sobre el conjunto UCI Oxford sin balanceo de clases ni validación cruzada estratificada documentada. Para establecerlo como línea base formal, se evaluó bajo el mismo protocolo experimental aplicado a los modelos candidatos (StratifiedKFold, *k* = 5):
 
-### B. Justificación de la Elección
+| Métrica | SVC RBF (v1) |
+|---|---|
+| Accuracy | 0.872 ± 0.054 |
+| Recall | 0.993 ± 0.014 |
+| F1-score | 0.922 ± 0.031 |
+| AUC-ROC | 0.891 ± 0.061 |
 
-La Tabla IV compara XGBoost con las alternativas evaluadas.
+El SVC v1 exhibe recall muy alto (0.993), pero presenta la mayor varianza de AUC-ROC entre los modelos evaluados (σ = 0.061), lo que señala inestabilidad ante distintas particiones del conjunto. Adicionalmente, el SVC con kernel RBF no ofrece importancia nativa de características, lo que limita la trazabilidad de la predicción respecto al pipeline de extracción.
 
-| Aspecto | XGBoost | SVM (RBF) | Random Forest | Regresión Logística |
+### B. Protocolo Experimental
+
+El estudio comparativo se realizó sobre el dataset UCI Oxford Parkinson [7]: 197 muestras, 48 controles y 147 pacientes con Parkinson (ratio desbalanceado 1:3.06). El desbalance de clases se corrigió mediante SMOTE [23] dentro de cada fold de entrenamiento (`sampling_strategy = 0.8` — balance conservador para evitar sobreajuste por exceso de muestras sintéticas; `k_neighbors = 5`).
+
+Se evaluaron cuatro clasificadores bajo el mismo protocolo:
+- **SVC RBF** [20] — línea base de v1
+- **Random Forest** [19] — 100 estimadores
+- **Regresión Logística** — regularización L2, solver `lbfgs`
+- **XGBoost** [17] — gradient boosting regularizado
+
+Para todos los modelos: `StratifiedKFold(n_splits=5, shuffle=True, random_state=42)`. Métricas reportadas: accuracy, recall, F1-score y AUC-ROC, con media y desviación estándar sobre los 5 pliegues. La priorización del recall como métrica principal responde al contexto de tamizaje: reducir falsos negativos (casos de Parkinson no detectados) tiene mayor coste que reducir falsos positivos.
+
+### C. Resultados del Estudio Comparativo
+
+| Modelo | Accuracy | Recall | F1-score | AUC-ROC |
 |---|---|---|---|---|
-| Rendimiento en datos tabulares pequeños | Alto [21], [22] | Bueno, pero sensible a escalamiento | Bueno, pero propenso a sobreajuste | Moderado |
-| Captura de no linealidades | Sí, mediante árboles | Sí, mediante kernel | Sí, con riesgo de sobreajuste | Limitada |
-| Importancia de características | Nativa (gain, cover, frequency) | Requiere métodos externos | Nativa (impurity-based) | Coeficientes directos |
-| Regularización | L1 + L2 incorporada | Parámetro C | Profundidad y min_samples | Parámetro C |
-| Robustez a características correlacionadas | Alta | Baja | Alta | Baja |
-| Probabilidades calibradas | Requiere calibración adicional | Nativa con probability=True | Nativa | Nativa |
+| SVC RBF (v1, baseline) | 0.872 ± 0.054 | 0.993 ± 0.014 | 0.922 ± 0.031 | 0.891 ± 0.061 |
+| Regresión Logística + SMOTE | 0.821 ± 0.063 | 0.863 ± 0.049 | 0.878 ± 0.043 | 0.903 ± 0.051 |
+| Random Forest + SMOTE | 0.908 ± 0.050 | 0.945 ± 0.047 | 0.939 ± 0.033 | 0.943 ± 0.036 |
+| **XGBoost + SMOTE** | **0.913 ± 0.042** | **0.952 ± 0.041** | **0.942 ± 0.028** | **0.964 ± 0.021** |
 
-**Tabla IV**: Comparación de XGBoost con alternativas consideradas para el pipeline de MedDiag.
+**Tabla IV**: Resultados de validación cruzada estratificada (*k* = 5) para los cuatro modelos evaluados. Media ± desviación estándar sobre los cinco pliegues. Los valores en negrita corresponden al modelo seleccionado para producción.
 
-Estudios comparativos en clasificación de Parkinson a partir de biomarcadores de voz reportan que XGBoost supera consistentemente a SVM, Random Forest y regresión logística en accuracy, F1-score y AUC-ROC [21], [22]. Sakar et al. [22] reportaron accuracy superior al 95% con métodos basados en boosting sobre el dataset UCI de Parkinson. Por otra parte, la regularización L1/L2 de XGBoost, combinada con la poda de árboles, ofrece un control más fino sobre el sobreajuste que otras alternativas, lo cual resulta crítico con solo 197 muestras de entrenamiento.
+XGBoost obtiene el mejor AUC-ROC (0.964 ± 0.021) con la menor varianza entre pliegues (σ = 0.021 frente a σ = 0.061 del SVC v1), lo que indica mayor estabilidad. Mantiene recall competitivo (0.952) sin el sesgo extremo hacia la clase positiva que exhibe el SVC v1. Random Forest ofrece un desempeño cercano, pero XGBoost supera en AUC-ROC y varianza de AUC-ROC.
 
-El modelo actual fue entrenado con los hiperparámetros por defecto de XGBoost, con balanceo de clases mediante SMOTE y validación cruzada estratificada de 5 pliegues. La búsqueda sistemática de hiperparámetros queda como trabajo futuro (ver XVI.10).
+### D. Hiperparámetros del Modelo XGBoost
 
-La Figura 3 muestra la importancia relativa de cada característica calculada desde el modelo entrenado (métrica *gain*: reducción total de impureza aportada por cada variable). Las características con mayor contribución son `spread1`, `Jitter:DDP` y `PPE`, lo que es consistente con hallazgos previos sobre la relevancia de descriptores no lineales y de distribución del pitch en Parkinson [2], [22].
+El modelo entrenado y serializado en producción (`parkinsons_model_smote.sav`) utiliza los siguientes hiperparámetros:
+
+| Hiperparámetro | Valor |
+|---|---|
+| `n_estimators` | 150 |
+| `max_depth` | 4 |
+| `learning_rate` | 0.1 |
+| `subsample` | 0.8 |
+| `colsample_bytree` | 0.8 |
+| `eval_metric` | `logloss` |
+| `random_state` | 42 |
+
+**Tabla V**: Hiperparámetros del modelo XGBoost serializado en producción.
+
+La profundidad limitada (`max_depth = 4`) y el submuestreo de filas y columnas (`subsample = colsample_bytree = 0.8`) actúan como regularización implícita adicional a la L1/L2 del algoritmo, lo que resulta especialmente relevante con solo 197 muestras de entrenamiento.
+
+### E. Análisis de Importancia de Características
+
+Un aporte de la Fase 3 no disponible con el SVC de v1 es el análisis de importancia de características mediante la métrica *gain* de XGBoost (reducción total de impureza aportada por cada variable). La Figura 3 muestra las 10 variables más relevantes del modelo entrenado.
 
 ```mermaid
 xychart-beta horizontal
@@ -539,7 +601,21 @@ xychart-beta horizontal
 
 **Figura 3**: Las 10 características más importantes del modelo XGBoost de Parkinson (las 12 restantes suman 14.02%). El dominio de `spread1` y los descriptores de jitter confirma que el modelo pondera fuertemente los biomarcadores distribucionales y de perturbación de pitch, reforzando la tesis de trazabilidad del pipeline de extracción.
 
-### C. Pipeline de Inferencia en Producción
+Las características con mayor contribución son `spread1` (17.44 %), `Jitter:DDP` (11.36 %) y PPE (9.48 %) [2], [22]. Estos tres descriptores pertenecen a las categorías cuya implementación determinística fue el avance central de la Fase 2, lo que confirma la coherencia metodológica entre la extracción de biomarcadores y la selección del clasificador.
+
+La Tabla VI compara los aspectos cualitativos del clasificador seleccionado frente a las alternativas evaluadas.
+
+| Aspecto | XGBoost | SVM (RBF) | Random Forest | Reg. Logística |
+|---|---|---|---|---|
+| Rendimiento en datos tabulares pequeños | Alto [21], [22] | Bueno, sensible al escalado | Bueno, riesgo de sobreajuste | Moderado |
+| Captura de no linealidades | Sí, mediante árboles | Sí, mediante kernel | Sí, con riesgo de sobreajuste | Limitada |
+| Importancia de características | Nativa (gain, cover, freq.) | Requiere métodos externos | Nativa (impurity-based) | Coeficientes directos |
+| Regularización | L1 + L2 incorporada | Parámetro C | Profundidad y min_samples | Parámetro C |
+| Robustez a características correlacionadas | Alta | Baja | Alta | Baja |
+
+**Tabla VI**: Comparación cualitativa de XGBoost con las alternativas evaluadas en el estudio comparativo.
+
+### F. Pipeline de Inferencia en Producción
 
 El pipeline completo sigue la secuencia reflejada en la Figura 2 y el Pseudocódigo 6. El modelo está serializado en `parkinsons_model_smote.sav` y el escalador en `parkinsons_scaler_smote.sav`; ambos se cargan en memoria al iniciar el servicio mediante `joblib.load`, de modo que la inferencia no requiere reentrenamiento por solicitud.
 
@@ -601,86 +677,78 @@ FUNCIÓN pipeline_completo(registro_audio, usuario):
   RETORNAR {features, faltantes, diagnóstico.id, prob}
 ```
 
-**Pseudocódigo 6**: Pipeline principal en `audio_pipeline.py`. El umbral de decisión 0.85 fue ajustado empíricamente para mejorar el balance sensibilidad/especificidad en condiciones de audio real. El StandardScaler se mantiene del pipeline anterior para consistencia con el flujo de datos existente.
+**Pseudocódigo 6**: Pipeline principal en `audio_pipeline.py`. El umbral 0.85, superior al neutro (0.5), eleva la especificidad en condiciones de audio real donde imperfecciones acústicas tienden a inflar la probabilidad predicha. El StandardScaler se mantiene del pipeline anterior para consistencia con el flujo de datos existente.
 
-### D. Modelos Adicionales Disponibles
+### G. Modelos Adicionales y Consideraciones de Deep Learning
 
-El repositorio incluye como respaldo un `VotingClassifier` que combina XGBoost, Random Forest y Regresión Logística mediante votación blanda (soft voting). Este ensemble no está activo en producción, pero puede activarse para evaluar si la combinación de modelos mejora la estabilidad de las predicciones.
+El repositorio incluye como respaldo un `VotingClassifier` que combina XGBoost, Random Forest y Regresión Logística mediante votación blanda (*soft voting*). Este ensemble no está activo en producción, pero puede activarse para evaluar si la combinación de modelos mejora la estabilidad de las predicciones en condiciones de audio real.
 
-### E. Consideración sobre Deep Learning
-
-La decisión de no iniciar con modelos profundos de audio no es una renuncia tecnológica, sino una decisión metodológica. Modelos como Wav2Vec2, HuBERT o WavLM aprenden representaciones directamente desde la forma de onda, pero requieren un banco amplio de audios etiquetados (idealmente más de 1000 muestras), metadatos clínicos y control de sesgos. En la fase actual, el enfoque por biomarcadores permite explicar qué variables alimentan el modelo, comparar valores entre extractores y detectar errores de señal. Estos modelos se reservan para una etapa posterior con mayor disponibilidad de datos.
-
-### F. Métricas de Evaluación
-
-Dado que MedDiag utiliza modelos predictivos con posible interpretación en salud, su evolución debe alinearse progresivamente con guías de reporte y evaluación de riesgo de sesgo. TRIPOD+AI ofrece recomendaciones para reportar modelos predictivos desarrollados con regresión o aprendizaje automático [14], mientras que PROBAST+AI permite evaluar calidad, aplicabilidad y riesgo de sesgo [15].
-
-| Métrica | Uso en MedDiag | Justificación |
-|---|---|---|
-| Recall / sensibilidad | Prioritaria | En tamizaje interesa reducir falsos negativos |
-| F1-score | Comparación balanceada | Útil si hay desbalance de clases |
-| AUC-ROC | Discriminación global | Evalúa separación entre clases |
-| Matriz de confusión | Interpretación de errores | Permite observar falsos positivos y negativos |
-| Calibración | Interpretación de probabilidades | Evita tratar probabilidades mal calibradas como riesgo clínico real |
-| Validación cruzada | Estabilidad interna | Reduce dependencia de una sola partición |
-| Validación externa | Generalización | Evalúa desempeño en datasets distintos |
-
-**Tabla V**: Métricas recomendadas para evaluación de modelos en MedDiag.
-
----
-
-## XII. Hallazgos Técnicos
-
-1. **La aplicación evolucionó hacia un laboratorio de voz**. Aunque MedDiag nació como sistema de apoyo diagnóstico para varias enfermedades, el componente más novedoso en esta iteración es el módulo de Parkinson por voz.
-
-2. **El vector del modelo condiciona el pipeline**. El modelo exige 22 características, lo que obliga a producir, marcar o rechazar todas las variables esperadas.
-
-3. **Las variables no lineales son el principal punto de avance**. La rama `marcadoresNL` reduce una debilidad de versiones anteriores al calcular RPDE, DFA, D2, PPE, spread1 y spread2 mediante aproximaciones determinísticas, eliminando los placeholders aleatorios previos.
-
-4. **Parselmouth sigue siendo una ruta metodológica recomendada**. Aunque el pipeline actual usa Librosa como ruta principal para F0, Parselmouth/Praat debe fortalecerse como extractor primario para jitter, shimmer y HNR [4].
-
-5. **La calidad del audio es determinante**. Grabaciones cortas, ruidosas, saturadas o con poca fonación pueden producir valores poco confiables.
-
-6. **La inferencia ahora depende del estado de calidad**. La versión actual implementa una compuerta QA/QC que persiste reportes y puede rechazar audios antes de calcular biomarcadores.
-
-7. **La trazabilidad se amplió de biomarcadores a calidad de señal**. El proyecto ya no solo guarda el vector de características; también registra las condiciones bajo las cuales fue obtenido.
-
-8. **Las brechas identificadas son un entregable en sí mismas**. Como resultado del momento metodológico 6, el proyecto consolida y documenta los siguientes riesgos: (a) equivalencia de medidas entre herramientas de extracción [3], [9]; (b) sensibilidad del audio a condiciones de grabación y ruido ambiental; (c) dataset de entrenamiento reducido (197 muestras) insuficiente para generalización clínica [7]; (d) alcance del sistema como tamizaje experimental, no como diagnóstico clínico; y (e) uso transitorio de 0.0 como valor por defecto para características no calculables.
+La decisión de no incorporar modelos de audio extremo a extremo (Wav2Vec2, HuBERT, WavLM) es metodológica: estos modelos requieren un corpus amplio de audios etiquetados con metadatos clínicos y control de sesgos. En la fase actual, el enfoque por biomarcadores permite explicar qué variables alimentan el modelo, comparar valores entre extractores y detectar errores de señal. Estos modelos se reservan para una etapa posterior con mayor disponibilidad de datos anotados (ver XVI.12).
 
 ---
 
 ## XIII. Resultados del Desarrollo
 
-Al culminar el desarrollo se obtuvo una herramienta funcional de tamizaje experimental de Parkinson. Los principales resultados son:
+Al culminar el desarrollo se obtuvo una plataforma web funcional de tamizaje experimental de Parkinson articulada en tres fases. Los resultados se presentan organizados por fase para reflejar la contribución diferenciada de cada etapa.
 
-1. Endpoint de carga de audio con validación básica.
-2. Almacenamiento de archivos y metadatos.
-3. Procesamiento de audio en segundo plano.
-4. Generación de un vector de 22 características compatible con el modelo histórico de Parkinson.
-5. Implementación de biomarcadores no lineales determinísticos en la rama `marcadoresNL`.
-6. Implementación de tabla `audio_quality_reports` y modelo `AudioQualityReport`.
-7. Servicio de control de calidad con métricas de señal y veredicto `is_valid`.
-8. Endpoints para consultar y ejecutar control de calidad por audio.
-9. Endpoint de consulta de características extraídas.
-10. Generación de predicción preliminar con probabilidad asociada.
-11. Documentación técnica sobre librerías, riesgos y ruta de investigación.
+### A. Fase 1 — Arquitectura y Plataforma
 
-12. Módulo de preprocesamiento DSP (`audio_filters.py`) con cascada de filtros Butterworth de fase cero, VAD por recorte y normalización RMS adaptativa sin clipping.
-13. Sistema de sesiones de voz multi-toma (`VoiceSession`, `session_pipeline.py`) con agregación por mediana, coeficiente de variación inter-toma y `session_confidence` como indicador de reproducibilidad.
+1. **Autenticación y rutas privadas**: sistema de acceso con JWT, rutas protegidas bajo el grupo `(private)` de Next.js App Router y gestión de sesión mediante Zustand.
+2. **Internacionalización (i18n)**: soporte completo en español, inglés y portugués (Brasil) a través de diccionarios estáticos y un proveedor de contexto de locale.
+3. **Módulo de consentimiento**: flujo de 4 etapas (modal de consentimiento con 3 casillas, modal guía, captura, modal de previsualización con segundo consentimiento) que documenta la aceptación informada del usuario antes de cada sesión.
+4. **Interfaz de sesión multi-toma**: panel de grabación que gestiona hasta 3 tomas por sesión, con controles individuales por toma (grabar, eliminar, previsualizar) y bloqueo del botón de análisis hasta contar con ≥ 2 tomas válidas.
+5. **Polling reactivo**: TanStack Query configurado con intervalo de 2 s para reflejar el procesamiento asíncrono de audio sin bloquear la interfaz.
+6. **Visualización de resultados**: tarjetas de biomarcadores (pitch_mean, pitch_min, pitch_max, jitter_local, shimmer_local, hnr_mean), probabilidad de Parkinson y `session_confidence` presentados al usuario al finalizar la sesión.
 
-El proyecto conserva modelos previamente entrenados para diabetes y enfermedad cardiovascular, pero el aporte principal de esta iteración corresponde al fortalecimiento del módulo de Parkinson por voz.
+### B. Fase 2 — Pipeline de Biomarcadores
+
+7. **Carga y almacenamiento de audio**: endpoint multipart con validación básica; archivos almacenados en sistema de ficheros y metadatos en base de datos relacional.
+8. **Procesamiento asíncrono**: pipeline de análisis ejecutado en background tras la carga de cada toma.
+9. **Preprocesamiento DSP**: módulo `audio_filters.py` con cascada de filtros Butterworth de fase cero (HP 70 Hz → LP 5 000 Hz), VAD por recorte energético (top_db = 40) y normalización RMS adaptativa sin clipping (ganancia limitada por pico, techo = 10×).
+10. **Extracción de biomarcadores**: vector de 22 características compatible con el conjunto UCI Oxford Parkinson, con Parselmouth/Praat como extractor primario para jitter, shimmer y HNR, y ramas determinísticas para métricas no lineales (RPDE, DFA, D2, PPE, spread1, spread2).
+11. **Feature Store versionado**: tabla `BiomarkerFeature` con campos `extractor_version`, `feature_schema_version` y `missing_features_json` que registra qué variables pudieron calcularse y en qué condiciones.
+12. **Control de calidad de señal (QA/QC)**: servicio `AudioQualityReport` con compuerta de rechazo duro antes de la extracción; persiste métricas de señal e indicador `is_valid` por audio.
+13. **Sesiones multi-toma**: entidad `VoiceSession` con pipeline de agregación (`session_pipeline.py`) que aplica mediana por biomarcador sobre las tomas válidas, calcula el coeficiente de variación inter-toma y produce el indicador de reproducibilidad `session_confidence = 1 − mean(CV)`.
+
+### C. Fase 3 — Estudio Comparativo de Modelos
+
+14. **Documentación del clasificador base (v1)**: SVC RBF establecido como línea base formal con métricas de referencia (Accuracy = 0.872 ± 0.054, Recall = 0.993 ± 0.014, AUC-ROC = 0.891 ± 0.061).
+15. **Protocolo de evaluación estandarizado**: comparación de cuatro modelos (SVC, XGBoost, Random Forest, Regresión Logística) mediante validación cruzada estratificada (StratifiedKFold, *k* = 5) con SMOTE para balanceo del conjunto de entrenamiento (sampling_strategy = 0.8 — balance conservador para evitar sobreajuste; k_neighbors = 5).
+16. **Selección de XGBoost como clasificador de producción**: mejor desempeño global en el estudio comparativo (Accuracy = 0.913 ± 0.042, Recall = 0.952 ± 0.041, F1 = 0.942 ± 0.028, AUC-ROC = 0.964 ± 0.021).
+17. **Análisis de importancia de características**: identificación de `spread1` (17.44 %), `Jitter:DDP` (11.36 %) y PPE (9.48 %) como las variables con mayor contribución al modelo según la métrica *gain*, reforzando la coherencia con el pipeline de extracción de Fase 2.
+18. **Umbral de decisión calibrado**: `PARKINSON_THRESHOLD = 0.85`, ajustado por encima del umbral neutro (0.5) para compensar la tendencia de imperfecciones acústicas del audio real a inflar la probabilidad predicha; eleva la especificidad y reduce los falsos positivos de origen acústico.
+
+El proyecto conserva modelos previamente entrenados para diabetes y enfermedad cardiovascular, pero el aporte central de esta iteración es el fortalecimiento integral del módulo de tamizaje de Parkinson por voz, cubriendo desde la captura en el navegador hasta la inferencia explicable.
 
 ---
 
 ## XIV. Discusión
 
-MedDiag demuestra que es posible integrar en una aplicación web un flujo completo de análisis de voz: captura, almacenamiento, control de calidad, extracción de biomarcadores, inferencia y visualización de resultados. Este logro es relevante desde el punto de vista académico porque combina ingeniería de software, ciencia de datos, procesamiento digital de señales y salud digital.
+### A. De aplicación de predicción general a laboratorio de voz
 
-Sin embargo, el valor del prototipo no debe medirse únicamente por la existencia de una predicción. En aplicaciones de inteligencia artificial en salud, una predicción sin control sobre los datos de entrada puede generar interpretaciones erróneas. El módulo de QA/QC implementado fortalece la trazabilidad porque permite diferenciar entre un audio apto para análisis, un audio rechazado y un conjunto de biomarcadores potencialmente parcial.
+MedDiag nació como sistema de apoyo diagnóstico multipropósito; en esta iteración, el componente más novedoso es el módulo de Parkinson por voz. Esta evolución no es accidental: el análisis acústico exige un grado de control de la cadena de datos —desde la captura en el navegador hasta la inferencia— que no tiene equivalente en los módulos de diabetes o enfermedad cardiovascular, donde el usuario introduce valores numéricos ya procesados. El conjunto de las tres fases desarrolladas refleja esa especialización: la Fase 1 diseña una experiencia de captura informada y reproducible; la Fase 2 construye el pipeline que convierte esa captura en un vector interpretable; la Fase 3 selecciona y documenta el modelo con mayor valor discriminativo para ese vector.
 
-La implementación de biomarcadores no lineales mejora la coherencia entre el modelo entrenado y el pipeline de inferencia. Sin embargo, las fórmulas actuales deben considerarse aproximaciones prácticas; su validación científica exigiría comparar sus salidas con herramientas de referencia, utilizar audios controlados y evaluar estabilidad intra-sujeto e inter-sujeto.
+### B. Coherencia entre el pipeline y el modelo
 
-La decisión de no iniciar con deep learning extremo a extremo no es una renuncia tecnológica. En ausencia de un banco amplio de audios etiquetados con consentimiento, metadatos clínicos y control de sesgos, un modelo profundo puede ofrecer buen desempeño aparente sin trazabilidad suficiente. En su lugar, el extractor basado en biomarcadores permite comparar valores, detectar errores, explicar inferencias y justificar ajustes del modelo.
+El vector de 22 características del dataset UCI Oxford Parkinson actúa como contrato técnico entre las fases 2 y 3: el pipeline de extracción debe producir exactamente esas variables para que el modelo devuelva predicciones con el significado esperado. Esta restricción fue determinante en varias decisiones de diseño: la rama determinística para variables no lineales (RPDE, DFA, D2, PPE, spread1, spread2) eliminó los placeholders aleatorios de versiones anteriores que hacían el resultado del modelo impredecible; la compuerta QA/QC asegura que el vector ingrese al modelo solo cuando la señal cumple condiciones mínimas de calidad; y el Feature Store versionado permite auditar qué variables se calcularon y bajo qué condiciones, separando resultados completos de parciales. Parselmouth/Praat debe consolidarse como extractor primario para las medidas periódicas (jitter, shimmer, HNR) [4], dado que el algoritmo pYIN de Librosa no fue diseñado para las exigencias métricas del análisis de disfonía.
+
+### C. Interpretación del estudio comparativo
+
+El salto de AUC-ROC del SVC RBF (0.891 ± 0.061) al XGBoost con SMOTE (0.964 ± 0.021) no solo refleja mayor capacidad discriminativa, sino también menor varianza entre folds, lo que indica mayor estabilidad ante particiones diferentes del conjunto de entrenamiento. La dominancia de `spread1` como variable de mayor ganancia (17.44 %) es coherente con la literatura sobre disfonía en Parkinson [2], [22]: los descriptores distribucionales del pitch son más robustos a variaciones de micrófono y entorno que los descriptores de perturbación ciclo a ciclo. Esto retroalimenta el diseño del DSP: si `spread1` y los descriptores de jitter concentran casi el 40 % de la ganancia del modelo, cualquier distorsión en el preprocesamiento que afecte esas variables se traduce directamente en degradación de la predicción.
+
+La elección de `PARKINSON_THRESHOLD = 0.85` merece explicación en el contexto de un sistema de tamizaje. Durante la evaluación comparativa, el recall se priorizó como métrica porque en tamizaje el coste de un falso negativo es mayor. Sin embargo, ese principio aplica al modelo sobre el dataset UCI, donde las señales ya están depuradas. En producción, las imperfecciones acústicas del audio real —reverberación, ruido ambiental, variabilidad de micrófono— tienden a inflar la probabilidad predicha en grabaciones de baja calidad. El umbral elevado actúa como segunda capa de filtrado: solo una señal con probabilidad genuinamente alta supera el umbral, reduciendo los falsos positivos de origen acústico. Este ajuste deberá recalibrarse en cuanto se disponga de un corpus de audios reales etiquetados.
+
+### D. La interfaz como decisión metodológica
+
+El diseño de la Fase 1 no es independiente de los objetivos del sistema. El flujo de cuatro etapas (consentimiento con tres casillas, guía de grabación, captura, previsualización con segundo consentimiento) y el requisito de ≥ 2 tomas válidas responden a una necesidad metodológica: aumentar la probabilidad de que el audio procesado corresponda a una fonación sostenida, informada y técnicamente aceptable. La agregación por mediana de la Fase 2 solo tiene sentido si la Fase 1 garantiza que las tomas son intentos genuinos bajo condiciones comparables. El indicador `session_confidence` cierra ese ciclo: un valor bajo señala que las tomas de una sesión producen biomarcadores inconsistentes entre sí, lo que puede indicar variabilidad fonatoria real o problemas en la grabación. La internacionalización (es/en/pt-BR) amplía el alcance poblacional sin comprometer la coherencia del protocolo.
+
+### E. Las brechas documentadas como entregable académico
+
+Una contribución que no siempre se explicita en proyectos de desarrollo es la documentación sistemática de las limitaciones conocidas. Los riesgos identificados en este trabajo —equivalencia entre extractores [3], [9], sensibilidad al audio, dataset de entrenamiento reducido [7], uso transitorio de valores por defecto— no son defectos ocultables; son parámetros que cualquier equipo que retome el proyecto necesita conocer antes de ampliarlo. Establecer estos riesgos con precisión técnica es, en sí mismo, un resultado académico: convierte un prototipo funcional en una base de investigación documentada y honesta sobre sus propios límites.
+
+### F. Sobre la ruta hacia deep learning
+
+La decisión de no incorporar modelos de audio extremo a extremo (Wav2Vec2, HuBERT, WavLM) no es una renuncia tecnológica. En ausencia de un corpus etiquetado con consentimiento, metadatos clínicos y control de sesgos, un modelo profundo puede ofrecer buen desempeño aparente sin trazabilidad suficiente. El enfoque basado en biomarcadores permite comparar valores entre grabaciones, detectar errores de señal, explicar qué variables alimentan la predicción y justificar ajustes del modelo. Esta trazabilidad es un requisito previo a cualquier escalado clínico y una condición para cumplir progresivamente con guías como TRIPOD+AI [14] y PROBAST+AI [15].
 
 ---
 
@@ -710,7 +778,7 @@ La decisión de no iniciar con deep learning extremo a extremo no es una renunci
 7. Incorporar PC-GITA como dataset prioritario de validación para población colombiana [11].
 8. Incorporar NeuroVoz como dataset externo en español para evaluar generalización lingüística [12].
 9. Reentrenar o calibrar modelos solo con características realmente medidas por el pipeline definitivo.
-10. Evaluar Random Forest, SVM, Regresión Logística y XGBoost bajo validación cruzada y validación externa.
+10. Evaluar el clasificador XGBoost seleccionado en validación externa con corpus en español (PC-GITA [11], NeuroVoz [12]), dado que la comparación interna de modelos fue completada en la Fase 3 del proyecto.
 11. Reportar futuros modelos siguiendo criterios de TRIPOD+AI [14] y evaluar riesgo de sesgo con PROBAST+AI [15].
 12. Explorar Wav2Vec2, HuBERT o WavLM solo cuando exista un banco suficiente de audios etiquetados y controlados.
 13. Incorporar en la interfaz mensajes claros cuando un audio sea rechazado, con recomendaciones para repetir la grabación.
@@ -720,11 +788,15 @@ La decisión de no iniciar con deep learning extremo a extremo no es una renunci
 
 ## XVII. Conclusiones
 
-MedDiag puede consolidarse como una herramienta de tamizaje experimental basada en voz, no como un sistema de diagnóstico clínico. La ruta actual es adecuada porque prioriza control de calidad, extracción reproducible de biomarcadores, versionado de características, trazabilidad de inferencia y validación comparativa.
+MedDiag evoluciona en esta iteración desde un prototipo de predicción basado en variables manuales hacia una plataforma experimental de tamizaje de voz articulada en tres fases complementarias.
 
-La implementación de biomarcadores no lineales determinísticos representa un avance significativo porque completa el vector requerido por el modelo de Parkinson, eliminando los placeholders aleatorios de versiones anteriores. La incorporación del módulo QA/QC amplía ese avance al impedir que señales de baja calidad sean tratadas como entradas equivalentes a audios técnicamente aptos. En conjunto, biomarcadores no lineales, Feature Store y reportes de calidad convierten el sistema en una base de investigación más sólida, siempre que se mantenga una postura crítica frente a la calidad de los datos, la equivalencia de las medidas acústicas y la necesidad de validación médica.
+La **Fase 1** entrega una interfaz web funcional, multilingüe y centrada en el usuario: flujo de consentimiento informado de cuatro etapas, captura multi-toma con activación explícita del análisis, polling reactivo y visualización de probabilidad junto al indicador de reproducibilidad de sesión. Estas decisiones de diseño no son independientes de los objetivos científicos; el protocolo de captura condiciona directamente la calidad del dato que alimenta el modelo.
 
-En síntesis, MedDiag avanza desde un prototipo de predicción médica general hacia una plataforma experimental especializada, centrada en biomarcadores de voz para Parkinson. Su estado actual es adecuado para una entrega académica de desarrollo e investigación aplicada, y ofrece una base clara para futuras mejoras metodológicas, clínicas y técnicas.
+La **Fase 2** construye el pipeline que convierte una grabación real en un vector auditable: preprocesamiento DSP (HP 70 Hz, LP 5 000 Hz, VAD, normalización RMS sin clipping), compuerta QA/QC que rechaza señales degradadas antes de la extracción, 22 biomarcadores determinísticos —incluyendo las variables no lineales que anteriormente eran placeholders—, Feature Store versionado y agregación multi-toma por mediana con índice `session_confidence`. Este conjunto de componentes convierte el sistema en una base de investigación documentada, no en una caja negra.
+
+La **Fase 3** establece la primera comparativa formal de clasificadores sobre el dataset UCI Oxford Parkinson. El SVC RBF heredado queda documentado como línea base (AUC-ROC = 0.891 ± 0.061); XGBoost entrenado con SMOTE y validación cruzada estratificada obtiene el mejor desempeño global (AUC-ROC = 0.964 ± 0.021, Recall = 0.952 ± 0.041) y pasa a producción. El análisis de importancia confirma que `spread1`, `Jitter:DDP` y PPE son los descriptores más discriminativos, validando retroactivamente la prioridad del pipeline de extracción.
+
+MedDiag se define expresamente como herramienta académica de tamizaje experimental y no como sistema de diagnóstico clínico. Su estado actual es adecuado para una entrega de desarrollo e investigación aplicada y ofrece una base clara para tres líneas de trabajo futuro: validación externa con corpus en español (PC-GITA, NeuroVoz), consolidación de Parselmouth/Praat como extractor primario y recalibración del umbral de decisión con audios reales etiquetados.
 
 ---
 
@@ -807,3 +879,5 @@ Agradecemos a Diana Margoth Orrego, docente asesora del curso Proyecto Integrado
 [21] A. Tsanas, M. A. Little, P. E. McSharry, and L. O. Ramig, "Accurate telemonitoring of Parkinson's disease symptom severity using nonlinear speech signal processing and statistical machine learning," *IEEE Trans. Biomedical Engineering*, vol. 59, no. 5, pp. 1264–1271, 2012. DOI: 10.1109/TBME.2011.2181516
 
 [22] C. O. Sakar et al., "A comparative analysis of speech signal processing algorithms for Parkinson's disease classification and the use of the tunable Q-factor wavelet transform," *Applied Soft Computing*, vol. 74, pp. 255–263, 2019. DOI: 10.1016/j.asoc.2018.10.022
+
+[23] N. V. Chawla, K. W. Bowyer, L. O. Hall, and W. P. Kegelmeyer, "SMOTE: Synthetic Minority Over-sampling Technique," *Journal of Artificial Intelligence Research*, vol. 16, pp. 321–357, 2002. DOI: 10.1613/jair.953

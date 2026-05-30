@@ -739,3 +739,91 @@ export async function getAudioFeatures(
     { method: "GET" }
   );
 }
+
+// ─── Sesiones multi-toma ─────────────────────────────────────────────────────
+
+export type TakeSummary = {
+  audio_record_id: number;
+  take_number: number;
+  status: string;
+  quality_score: number | null;
+  is_valid: boolean | null;
+  rejection_reason: string | null;
+};
+
+export type VoiceSessionOut = {
+  id: number;
+  uuid: string;
+  user_id: number;
+  max_takes: number;
+  status: "collecting" | "analyzing" | "completed" | "failed";
+  valid_takes_count: number | null;
+  session_confidence: number | null;
+  diagnosis_id: number | null;
+  created_at: string;
+  completed_at: string | null;
+  takes: TakeSummary[];
+};
+
+export type SessionAnalysisResult = {
+  session_id: number;
+  session_uuid: string;
+  status: string;
+  valid_takes_count: number;
+  session_confidence: number;
+  aggregated_features: Record<string, number>;
+  variance_per_feature: Record<string, number>;
+  diagnosis_id: number;
+  prediction: "positive" | "negative";
+  probability: number;
+  message: string;
+};
+
+export async function createVoiceSession(accessToken: string, maxTakes = 3): Promise<VoiceSessionOut> {
+  return apiRequest<VoiceSessionOut>("/sessions", accessToken, {
+    method: "POST",
+    body: JSON.stringify({ max_takes: maxTakes }),
+  });
+}
+
+export async function addSessionTake(
+  accessToken: string,
+  sessionId: number,
+  audioBlob: Blob,
+  fileName: string,
+  sourceType = "microphone",
+): Promise<{ audio_record_id: number; take_number: number; status: string; takes_registered: number; max_takes: number }> {
+  const formData = new FormData();
+  formData.append("file", audioBlob, fileName);
+  formData.append("source_type", sourceType);
+  const response = await fetch(`${apiBaseUrl}/sessions/${sessionId}/takes`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: formData,
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { detail?: string };
+    throw new Error(payload.detail ?? `Add take failed: ${response.status}`);
+  }
+  return response.json() as Promise<{ audio_record_id: number; take_number: number; status: string; takes_registered: number; max_takes: number }>;
+}
+
+export async function getVoiceSession(accessToken: string, sessionId: number): Promise<VoiceSessionOut> {
+  return apiRequest<VoiceSessionOut>(`/sessions/${sessionId}`, accessToken, { method: "GET" });
+}
+
+export async function analyzeVoiceSession(accessToken: string, sessionId: number): Promise<SessionAnalysisResult> {
+  return apiRequest<SessionAnalysisResult>(`/sessions/${sessionId}/analyze`, accessToken, { method: "POST" });
+}
+
+export async function removeSessionTake(accessToken: string, sessionId: number, takeId: number): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/sessions/${sessionId}/takes/${takeId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Remove take failed: ${response.status}`);
+  }
+}

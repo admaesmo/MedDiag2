@@ -9,6 +9,7 @@ import { Card } from "@/components/atoms/card";
 import { useSessionState } from "@/features/auth/use-session";
 import { useAudioRecording } from "@/features/parkinson/use-audio-recording";
 import { useParkinsonPrediction } from "@/features/parkinson/mutations";
+import { useVoiceSession } from "@/features/parkinson/use-voice-session";
 import {
   extractVoiceBiomarkersMultipart,
   getAudioFeatures,
@@ -48,6 +49,9 @@ export default function ParkinsonPage() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [consentError, setConsentError] = useState<string | null>(null);
+  const [recordingForTake, setRecordingForTake] = useState<number | null>(null);
+  const [confirmingRemoveTake, setConfirmingRemoveTake] = useState<number | null>(null);
+  const [isGuideOpen, setIsGuideOpen] = useState(consentAccepted);
   const [checks, setChecks] = useState({
     data: false,
     validation: false,
@@ -56,7 +60,9 @@ export default function ParkinsonPage() {
   const firstConsentRef = useRef<HTMLInputElement>(null);
   const { accessToken, email } = useSessionState();
   const recording = useAudioRecording();
+  const sessionRecording = useAudioRecording();
   const prediction = useParkinsonPrediction(accessToken, email);
+  const voiceSession = useVoiceSession(accessToken);
   const mockApiEnabled = isMockApiEnabled();
   const audioQuery = useQuery({
     queryKey: ["audio", "me", "parkinson"],
@@ -137,6 +143,7 @@ export default function ParkinsonPage() {
 
   const canProceed = checks.data && checks.validation && checks.service;
 
+  const validSessionTakes = voiceSession.session?.takes.filter((tk) => tk.status === "processed").length ?? 0;
   const activePrediction = prediction.data ?? null;
   const result = useMemo(() => {
     if (!activePrediction) {
@@ -153,6 +160,7 @@ export default function ParkinsonPage() {
 
     setConsentError(null);
     setConsentAccepted(true);
+    setIsGuideOpen(true);
   };
 
   const recordingGuideSteps = [
@@ -575,59 +583,117 @@ export default function ParkinsonPage() {
         </div>
       ) : null}
 
-      <div className="surface-pane">
-        <Card className="mx-auto max-w-5xl border border-primary/10 bg-white/90">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-2xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t(locale, "parkinson", "recordingGuideEyebrow")}</p>
-              <h3 className="mt-2 text-2xl font-bold text-foreground">{t(locale, "parkinson", "recordingGuideTitle")}</h3>
-              <p className="mt-2 text-sm text-muted-foreground">{t(locale, "parkinson", "recordingGuideSubtitle")}</p>
+      {isGuideOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-foreground/25 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="guide-title"
+        >
+          <Card className="my-auto w-full max-w-3xl">
+            <div className="flex items-start justify-between gap-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                {t(locale, "parkinson", "recordingGuideEyebrow")}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsGuideOpen(false)}
+                aria-label={t(locale, "common", "close")}
+              >
+                ✕
+              </Button>
             </div>
-            <div className="rounded-2xl bg-primary/5 px-4 py-3 text-sm text-foreground">
-              <p className="font-semibold text-primary">{t(locale, "parkinson", "recordingDurationTitle")}</p>
-              <p className="mt-1 text-muted-foreground">{t(locale, "parkinson", "recordingDurationHint")}</p>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 lg:grid-cols-4">
-            {recordingGuideSteps.map((step) => (
-              <div key={step.title} className="rounded-2xl border border-surface-high bg-surface-lowest p-4">
-                <p className="text-sm font-semibold text-primary">{step.title}</p>
-                <p className="mt-2 text-sm text-muted-foreground">{step.body}</p>
+            <div className="mt-2 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-2xl">
+                <h3 id="guide-title" className="text-2xl font-bold text-foreground">
+                  {t(locale, "parkinson", "recordingGuideTitle")}
+                </h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {t(locale, "parkinson", "recordingGuideSubtitle")}
+                </p>
               </div>
-            ))}
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
-              <p className="text-sm font-semibold text-emerald-900">{t(locale, "parkinson", "recordingDoTitle")}</p>
-              <ul className="mt-3 space-y-2 text-sm text-emerald-900/90">
-                {recordingDos.map((item) => (
-                  <li key={item} className="flex gap-2">
-                    <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-600" aria-hidden="true" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="rounded-2xl bg-primary/5 px-4 py-3 text-sm text-foreground">
+                <p className="font-semibold text-primary">
+                  {t(locale, "parkinson", "recordingDurationTitle")}
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  {t(locale, "parkinson", "recordingDurationHint")}
+                </p>
+              </div>
             </div>
 
-            <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4">
-              <p className="text-sm font-semibold text-rose-900">{t(locale, "parkinson", "recordingDontTitle")}</p>
-              <ul className="mt-3 space-y-2 text-sm text-rose-900/90">
-                {recordingDonts.map((item) => (
-                  <li key={item} className="flex gap-2">
-                    <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-rose-600" aria-hidden="true" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
+            <div className="mt-6 grid gap-4 lg:grid-cols-4">
+              {recordingGuideSteps.map((step) => (
+                <div key={step.title} className="rounded-2xl border border-surface-high bg-surface-lowest p-4">
+                  <p className="text-sm font-semibold text-primary">{step.title}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">{step.body}</p>
+                </div>
+              ))}
             </div>
-          </div>
 
-          <div className="mt-6 rounded-2xl bg-surface-lowest px-4 py-3 text-sm text-muted-foreground">
-            {guidanceStatus}
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
+                <p className="text-sm font-semibold text-emerald-900">
+                  {t(locale, "parkinson", "recordingDoTitle")}
+                </p>
+                <ul className="mt-3 space-y-2 text-sm text-emerald-900/90">
+                  {recordingDos.map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-600" aria-hidden="true" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4">
+                <p className="text-sm font-semibold text-rose-900">
+                  {t(locale, "parkinson", "recordingDontTitle")}
+                </p>
+                <ul className="mt-3 space-y-2 text-sm text-rose-900/90">
+                  {recordingDonts.map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-rose-600" aria-hidden="true" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <Button onClick={() => setIsGuideOpen(false)}>
+                {t(locale, "common", "close")}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
+      <div className="surface-pane">
+        <div
+          role="button"
+          tabIndex={0}
+          className="mx-auto w-full max-w-5xl rounded-2xl border border-primary/10 bg-white/90 px-5 py-4 cursor-pointer transition-colors hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          onClick={() => setIsGuideOpen(true)}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setIsGuideOpen(true); } }}
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                {t(locale, "parkinson", "recordingGuideEyebrow")}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {t(locale, "parkinson", "recordingGuideTitle")}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{guidanceStatus}</p>
+            </div>
+            <span className="shrink-0 text-xs font-semibold text-primary">
+              {t(locale, "parkinson", "recordingGuideOpen")} →
+            </span>
           </div>
-        </Card>
+        </div>
 
         <Card className="mx-auto max-w-3xl bg-white/90 text-center backdrop-blur">
           <div className="relative mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary text-white">
@@ -754,17 +820,17 @@ export default function ParkinsonPage() {
             </p>
           ) : null}
 
-          <div className="mt-8 rounded-2xl border border-primary/10 bg-primary/5 p-5 text-left">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  {t(locale, "parkinson", "biomarkerPanelTitle")}
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {t(locale, "parkinson", "biomarkerPanelHint")}
-                </p>
-              </div>
-              {biomarkerResponse ? (
+          {biomarkerResponse ? (
+            <div className="mt-8 rounded-2xl border border-primary/10 bg-primary/5 p-5 text-left">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    {t(locale, "parkinson", "biomarkerPanelTitle")}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {t(locale, "parkinson", "biomarkerPanelHint")}
+                  </p>
+                </div>
                 <div className="text-right">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                     {t(locale, "parkinson", "biomarkerMetadataLabel")}
@@ -773,82 +839,335 @@ export default function ParkinsonPage() {
                     {biomarkerResponse.audio.sample_rate_hz} Hz | {biomarkerResponse.audio.channels} ch | {biomarkerResponse.audio.normalized_format.toUpperCase()} | {biomarkerResponse.audio.duration_seconds.toFixed(2)} s
                   </p>
                 </div>
-              ) : null}
-            </div>
+              </div>
 
-            {!biomarkerResponse ? (
-              <p className="mt-4 rounded-xl bg-white/70 px-4 py-3 text-sm text-muted-foreground">
-                {t(locale, "parkinson", "biomarkerPanelEmpty")}
-              </p>
-            ) : null}
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {biomarkerCards.map((item) => (
-                <div key={item.key} className="rounded-xl bg-white/80 p-4 shadow-sm">
-                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                    {t(locale, "parkinson", "measureLabel")}
-                  </p>
-                  <p className="mt-2 text-sm font-semibold text-foreground">{item.label}</p>
-                  <p className="mt-2 text-2xl font-bold text-foreground">
-                    {typeof item.value === "number"
-                      ? `${item.value.toFixed(item.decimals)}${item.unit ? ` ${item.unit}` : ""}`
-                      : t(locale, "common", "notAvailable")}
-                  </p>
-                  <p className="mt-2 text-xs text-muted-foreground" title={item.description}>
-                    {item.description}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {biomarkerResponse ? (
-              <>
-                <div className="mt-4 rounded-xl bg-white/80 p-4 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                    {t(locale, "parkinson", "directModelResultLabel")}
-                  </p>
-                  <p className="mt-2 text-sm text-foreground">
-                    {t(locale, "common", "model")}: {biomarkerResponse.parkinson_model_input.model_name}
-                  </p>
-                  <p className="mt-1 text-sm text-foreground">
-                    {t(locale, "parkinson", "modelVectorCoverageLabel")}: {biomarkerResponse.parkinson_model_input.feature_count}/
-                    {biomarkerResponse.parkinson_model_input.required_feature_count}
-                  </p>
-                  <p className="mt-2 text-sm font-semibold text-foreground">
-                    {`${t(locale, "parkinson", "confidenceLabel")}: ${(biomarkerResponse.parkinson_inference.probability * 100).toFixed(2)}%`}
-                  </p>
-                  <p className="mt-1 text-sm text-foreground">
-                    {biomarkerResponse.parkinson_inference.message}
-                  </p>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {biomarkerResponse.parkinson_model_input.note}
-                  </p>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {biomarkerResponse.parkinson_model_bridge.note}
-                  </p>
-                </div>
-
-                <div className="mt-4 rounded-xl bg-white/80 p-4 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                    {t(locale, "parkinson", "modelFeaturesTitle")}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {t(locale, "parkinson", "modelFeaturesHint")}
-                  </p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                    {Object.entries(biomarkerResponse.parkinson_model_input.features).map(([key, value]) => (
-                      <div key={key} className="flex items-baseline justify-between gap-2 rounded-lg bg-white/60 px-3 py-2">
-                        <span className="text-xs font-semibold text-muted-foreground">{key}</span>
-                        <span className="text-sm font-bold text-foreground">
-                          {typeof value === "number" ? value.toFixed(4) : String(value)}
-                        </span>
-                      </div>
-                    ))}
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {biomarkerCards.map((item) => (
+                  <div key={item.key} className="rounded-xl bg-white/80 p-4 shadow-sm">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                      {t(locale, "parkinson", "measureLabel")}
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-foreground">{item.label}</p>
+                    <p className="mt-2 text-2xl font-bold text-foreground">
+                      {typeof item.value === "number"
+                        ? `${item.value.toFixed(item.decimals)}${item.unit ? ` ${item.unit}` : ""}`
+                        : t(locale, "common", "notAvailable")}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground" title={item.description}>
+                      {item.description}
+                    </p>
                   </div>
+                ))}
+              </div>
+
+              <div className="mt-4 rounded-xl bg-white/80 p-4 shadow-sm">
+                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                  {t(locale, "parkinson", "directModelResultLabel")}
+                </p>
+                <p className="mt-2 text-sm text-foreground">
+                  {t(locale, "common", "model")}: {biomarkerResponse.parkinson_model_input.model_name}
+                </p>
+                <p className="mt-1 text-sm text-foreground">
+                  {t(locale, "parkinson", "modelVectorCoverageLabel")}: {biomarkerResponse.parkinson_model_input.feature_count}/
+                  {biomarkerResponse.parkinson_model_input.required_feature_count}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-foreground">
+                  {`${t(locale, "parkinson", "confidenceLabel")}: ${(biomarkerResponse.parkinson_inference.probability * 100).toFixed(2)}%`}
+                </p>
+                <p className="mt-1 text-sm text-foreground">
+                  {biomarkerResponse.parkinson_inference.message}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {biomarkerResponse.parkinson_model_input.note}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {biomarkerResponse.parkinson_model_bridge.note}
+                </p>
+              </div>
+
+              <div className="mt-4 rounded-xl bg-white/80 p-4 shadow-sm">
+                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                  {t(locale, "parkinson", "modelFeaturesTitle")}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t(locale, "parkinson", "modelFeaturesHint")}
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {Object.entries(biomarkerResponse.parkinson_model_input.features).map(([key, value]) => (
+                    <div key={key} className="flex items-baseline justify-between gap-2 rounded-lg bg-white/60 px-3 py-2">
+                      <span className="text-xs font-semibold text-muted-foreground">{key}</span>
+                      <span className="text-sm font-bold text-foreground">
+                        {typeof value === "number" ? value.toFixed(4) : String(value)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              </>
-            ) : null}
+              </div>
+            </div>
+          ) : null}
+        </Card>
+
+        {/* ── Sesión multi-toma ── */}
+        <Card className="mx-auto max-w-3xl border border-primary/10 bg-white/90 text-left backdrop-blur">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                {t(locale, "parkinson", "sessionPanelTitle")}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t(locale, "parkinson", "sessionPanelSubtitle")}
+              </p>
+            </div>
+            {!voiceSession.session && accessToken && (
+              <Button
+                onClick={() => void voiceSession.startSession(3)}
+                disabled={voiceSession.isCreating}
+              >
+                {voiceSession.isCreating
+                  ? t(locale, "parkinson", "sessionStarting")
+                  : t(locale, "parkinson", "sessionStart")}
+              </Button>
+            )}
           </div>
+
+          {!accessToken && (
+            <p className="mt-4 text-sm text-muted-foreground">
+              {t(locale, "parkinson", "sessionAuthRequired")}
+            </p>
+          )}
+
+          {voiceSession.error && (
+            <p className="mt-4 text-sm font-semibold text-red-700" role="alert">
+              {voiceSession.error}
+            </p>
+          )}
+
+          {sessionRecording.error === "microphone_permission_denied" && recordingForTake !== null && (
+            <p className="mt-2 text-sm font-semibold text-red-700" role="alert">
+              {t(locale, "parkinson", "micPermissionDenied")}
+            </p>
+          )}
+
+          {voiceSession.session && (
+            <div className="mt-6 space-y-4">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Sesión #{voiceSession.session.id}</span>
+                <span aria-hidden="true">·</span>
+                <span className={`rounded-full px-2 py-0.5 font-semibold ${
+                  voiceSession.session.status === "completed"
+                    ? "bg-emerald-100 text-emerald-800"
+                    : voiceSession.session.status === "failed"
+                      ? "bg-red-100 text-red-800"
+                      : "bg-yellow-100 text-yellow-800"
+                }`}>
+                  {voiceSession.session.status}
+                </span>
+                {voiceSession.isPolling && (
+                  <span className="animate-pulse text-primary">actualizando...</span>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {Array.from({ length: voiceSession.session.max_takes }, (_, idx) => {
+                  const takeNumber = idx + 1;
+                  const existingTake = voiceSession.session?.takes.find((tk) => tk.take_number === takeNumber);
+                  const isThisRecording = sessionRecording.isRecording && recordingForTake === takeNumber;
+                  const isAddingThis = voiceSession.addingTakeNumber === takeNumber;
+                  const isConfirmingRemove = confirmingRemoveTake === existingTake?.audio_record_id;
+                  const canDelete =
+                    Boolean(existingTake) &&
+                    existingTake?.status !== "processed" &&
+                    voiceSession.session?.status === "collecting";
+
+                  return (
+                    <div
+                      key={takeNumber}
+                      className="flex items-center justify-between rounded-xl border border-surface-high bg-surface-lowest p-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="w-16 text-sm font-semibold text-foreground">
+                          {t(locale, "parkinson", "sessionTakeLabel")} {takeNumber}
+                        </span>
+                        {existingTake ? (
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                            existingTake.status === "processing"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : existingTake.status === "processed"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-red-100 text-red-800"
+                          }`}>
+                            {existingTake.status === "processing"
+                              ? t(locale, "parkinson", "sessionTakeProcessing")
+                              : existingTake.status === "processed"
+                                ? t(locale, "parkinson", "sessionTakeProcessed")
+                                : t(locale, "parkinson", "sessionTakeFailed")}
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-surface-high px-2 py-0.5 text-xs text-muted-foreground">
+                            {t(locale, "parkinson", "sessionTakePending")}
+                          </span>
+                        )}
+                        {isThisRecording && (
+                          <span className="font-mono text-xs text-primary">
+                            {formatElapsed(sessionRecording.elapsedSeconds)}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {canDelete && (
+                          isConfirmingRemove ? (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => setConfirmingRemoveTake(null)}
+                              >
+                                {t(locale, "common", "cancel")}
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  void voiceSession.removeTake(existingTake!.audio_record_id);
+                                  setConfirmingRemoveTake(null);
+                                }}
+                              >
+                                {t(locale, "parkinson", "sessionTakeRemoveConfirm")}
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => setConfirmingRemoveTake(existingTake!.audio_record_id)}
+                            >
+                              {t(locale, "parkinson", "sessionTakeRemove")}
+                            </Button>
+                          )
+                        )}
+
+                        {!existingTake && voiceSession.session?.status === "collecting" && (
+                          isThisRecording ? (
+                            <Button
+                              size="sm"
+                              onClick={async () => {
+                                const blob = await sessionRecording.stopRecording();
+                                if (blob) {
+                                  await voiceSession.addTake(blob, takeNumber, `take_${takeNumber}.wav`, "microphone");
+                                }
+                                setRecordingForTake(null);
+                              }}
+                            >
+                              {t(locale, "parkinson", "stop")}
+                            </Button>
+                          ) : (
+                            <>
+                              <Button
+                                size="sm"
+                                disabled={sessionRecording.isRecording || isAddingThis}
+                                onClick={async () => {
+                                  setRecordingForTake(takeNumber);
+                                  await sessionRecording.startRecording();
+                                }}
+                              >
+                                {isAddingThis
+                                  ? t(locale, "parkinson", "uploading")
+                                  : t(locale, "parkinson", "sessionTakeRecord")}
+                              </Button>
+                              <div>
+                                <input
+                                  type="file"
+                                  accept=".wav,.mp3,.ogg,.webm,.m4a,audio/*"
+                                  className="hidden"
+                                  id={`session-take-upload-${takeNumber}`}
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    e.target.value = "";
+                                    await voiceSession.addTake(file, takeNumber, file.name, "upload");
+                                  }}
+                                  disabled={sessionRecording.isRecording || isAddingThis}
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={sessionRecording.isRecording || isAddingThis}
+                                  onClick={() =>
+                                    document.getElementById(`session-take-upload-${takeNumber}`)?.click()
+                                  }
+                                >
+                                  {t(locale, "parkinson", "sessionTakeUpload")}
+                                </Button>
+                              </div>
+                            </>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {voiceSession.session.status === "collecting" && (
+                <div className="space-y-2 pt-2">
+                  {validSessionTakes < 2 && (
+                    <p className="text-xs text-amber-600">
+                      {t(locale, "parkinson", "sessionInsufficientTakes")}
+                    </p>
+                  )}
+                  <Button
+                    className="w-full"
+                    onClick={() => void voiceSession.analyze()}
+                    disabled={validSessionTakes < 2 || voiceSession.isAnalyzing || voiceSession.isPolling}
+                  >
+                    {voiceSession.isAnalyzing
+                      ? t(locale, "parkinson", "sessionAnalyzing")
+                      : t(locale, "parkinson", "sessionAnalyze")}
+                  </Button>
+                </div>
+              )}
+
+              {voiceSession.result && (
+                <div className="mt-4 rounded-2xl border border-primary/10 bg-primary/5 p-5 space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    {t(locale, "parkinson", "sessionResultTitle")}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-white/80 p-3 shadow-sm">
+                      <p className="text-xs text-muted-foreground">
+                        {t(locale, "parkinson", "confidenceLabel")}
+                      </p>
+                      <p className="mt-1 text-2xl font-bold text-foreground">
+                        {(voiceSession.result.probability * 100).toFixed(1)}%
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-white/80 p-3 shadow-sm">
+                      <p className="text-xs text-muted-foreground">
+                        {t(locale, "parkinson", "sessionConfidenceLabel")}
+                      </p>
+                      <p className="mt-1 text-2xl font-bold text-foreground">
+                        {(voiceSession.result.session_confidence * 100).toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {voiceSession.result.message}
+                  </p>
+                  <Button variant="secondary" onClick={voiceSession.reset}>
+                    {t(locale, "parkinson", "sessionReset")}
+                  </Button>
+                </div>
+              )}
+
+              {!voiceSession.result && (
+                <div className="pt-1">
+                  <Button variant="ghost" size="sm" onClick={voiceSession.reset}>
+                    {t(locale, "parkinson", "sessionReset")}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </Card>
       </div>
 
