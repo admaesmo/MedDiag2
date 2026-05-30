@@ -174,15 +174,38 @@ La ruta actual se organiza en capas progresivas, como se describe en la Tabla II
 
 La decisión metodológica más importante es separar responsabilidades: el audio no es el centro del sistema; el centro es la confiabilidad del biomarcador que llega al modelo.
 
-![Arquitectura reducida](Documentacion/figures/arquitectura%20reducida.png)
+### A. Arquitectura Cliente-Servidor
 
-*Figura — Arquitectura reducida:* vista simplificada de las capas principales (captura, preprocesamiento, control de calidad, extracción y persistencia). Útil como Figura introductoria en la Sección VI.
+El sistema sigue una arquitectura cliente-servidor de dos capas. El frontend está construido con Next.js (App Router), que organiza las rutas en un grupo `(private)` con verificación de sesión JWT en cada carga de página. El backend es una API RESTful implementada en FastAPI, que expone endpoints independientes para autenticación, carga de audio, consulta de biomarcadores, gestión de sesiones multi-toma y resultados de inferencia. Los archivos de audio se almacenan en sistema de ficheros separado de la base de datos relacional, que conserva únicamente metadatos y resultados procesados.
 
-![Arquitectura expandida](Documentacion/figures/arquitectura%20expandida.png)
+![Arquitectura del sistema MedDiag](Documentacion/figures/arquitectura%20reducida.png)
 
-*Figura — Arquitectura expandida:* diagrama detallado que muestra componentes backend (FastAPI), servicios de extracción, Feature Store, colas de procesamiento asíncrono y la integración con el frontend. Se recomienda situarla en el anexo técnico o después del pipeline si se necesita mayor detalle.
+**Figura 1**: Vista general de la arquitectura de MedDiag: navegador → Next.js (frontend) → FastAPI (backend) → pipeline de procesamiento → almacenamiento y base de datos. El diagrama expandido con detalle de servicios internos se incluye en los artefactos del repositorio (`Documentacion/figures/arquitectura expandida.png`).
 
-El shimmer es el biomarcador más beneficiado por este preprocesamiento: su cálculo extrae `max(|ventana|)` por período de F0, y el ruido de alta frecuencia infla sistemáticamente ese máximo en señales sin filtrar. El HNR por análisis cepstral también mejora, ya que el ruido de banda ancha distorsiona la relación entre el pico cepstral (armónico) y la energía residual (ruido). Los biomarcadores no lineales (DFA, D2, RPDE) se benefician indirectamente al recibir una señal con geometría de atractor más limpia.
+### B. Interfaz de Usuario y Flujo de Captura
+
+La interfaz de captura implementa un flujo guiado de cuatro etapas diseñado para maximizar la probabilidad de obtener grabaciones válidas: (1) modal de consentimiento informado con tres casillas de verificación obligatorias; (2) modal de guía con instrucciones de postura, distancia al micrófono y técnica de fonación; (3) panel de captura multi-toma, donde el usuario puede grabar, previsualizar y eliminar cada toma de forma independiente; y (4) modal de previsualización con segundo consentimiento explícito antes de enviar las tomas al análisis.
+
+El botón de análisis permanece bloqueado hasta que la sesión cuenta con al menos dos tomas válidas (`MIN_VALID_TAKES = 2`). El estado del procesamiento se actualiza mediante TanStack Query con un intervalo de *polling* de 2 s, reflejando en tiempo real el avance del pipeline asíncrono sin bloquear la interfaz. Al completarse la sesión, se presentan tarjetas de biomarcadores representativos (pitch medio, mínimo y máximo; jitter local; shimmer local; HNR medio), la probabilidad de Parkinson estimada por el modelo y el indicador `session_confidence`.
+
+La aplicación soporta tres idiomas (español, inglés y portugués de Brasil) mediante diccionarios estáticos y un proveedor de contexto de *locale*, sin dependencia de servicios externos de traducción.
+
+### C. Modelo de Datos y Entidades Clave
+
+El modelo de datos refleja el ciclo completo del biomarcador. Las entidades principales son:
+
+- **`AudioRecord`**: registro de cada toma de audio, con ruta al archivo, metadatos de formato y estado del procesamiento (`pending`, `processed`, `rejected`, `failed`).
+- **`BiomarkerFeature`**: vector de características asociado a un `AudioRecord`, con campos `extractor_version`, `feature_schema_version`, `missing_features_json` (lista de variables que no pudieron calcularse) e `is_partial` (bandera que indica completitud del vector).
+- **`VoiceSession`**: agrupa las tomas de una sesión, almacena el vector agregado (`aggregated_features_json`), la varianza inter-toma (`variance_json`), el recuento de tomas válidas y el indicador `session_confidence`.
+- **`Diagnosis`**: resultado de la inferencia con probabilidad y descripción textual del hallazgo preliminar.
+
+Los endpoints de sesión que articulan este modelo son: `POST /sessions` (crear sesión), `POST /sessions/{id}/takes` (añadir una toma y disparar el pipeline de esa toma en *background*) y `POST /sessions/{id}/analyze` (agregar tomas válidas y generar el diagnóstico).
+
+### D. Preprocesamiento DSP
+
+Antes de la extracción de biomarcadores, cada señal pasa por una cascada de cuatro operaciones en orden determinístico: filtro paso-alto Butterworth (fc = 70 Hz, orden 4, fase cero mediante `sosfiltfilt`), filtro paso-bajo Butterworth (fc = 5 000 Hz, mismo diseño), recorte de silencios por VAD energético (`top_db = 40`) y normalización RMS adaptativa. La ganancia de normalización se limita simultáneamente por el objetivo RMS, por el pico máximo de la señal y por un techo absoluto de 10×, de modo que no se introduce distorsión por *clipping*.
+
+El shimmer es el biomarcador más beneficiado: su cálculo extrae `max(|ventana|)` por período de F0, y el ruido de alta frecuencia infla sistemáticamente ese máximo en señales sin filtrar. El HNR por análisis cepstral también mejora, ya que el ruido de banda ancha distorsiona la relación entre el pico cepstral (armónico) y la energía residual (ruido). Los biomarcadores no lineales (DFA, D2, RPDE) se benefician indirectamente al recibir una señal con geometría de atractor más limpia. El pseudocódigo completo del módulo se encuentra en el Apéndice A.2.
 
 ### E. Extracción de Frecuencia Fundamental
 
