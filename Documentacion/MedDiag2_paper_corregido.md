@@ -165,7 +165,7 @@ La ruta actual se organiza en capas progresivas, como se describe en la Tabla II
 | Preprocesamiento | Mono, frecuencia de muestreo controlada y decodificación robusta | Estandariza la señal antes de extraer biomarcadores | Sesgos por dispositivo o formato |
 | Control de calidad | AudioQualityReport con duración, RMS, clipping, SNR, silencio, piso de ruido y ancho de banda | Bloquea o marca señales no aptas antes de la extracción | Inferencias sobre audio inválido |
 | Extracción base | Librosa, SciPy y Pydub | Carga, compatibilidad y cálculos auxiliares | Fallos de formato o pipeline rígido |
-| Extracción clínica objetivo (ver XVI.1) | Parselmouth/Praat | Ruta defendible para F0, jitter, shimmer y HNR; estado actual usa Librosa/pYIN como método principal | Desviación de medidas vocales |
+| Extracción clínica objetivo (ver XIII.1) | Parselmouth/Praat | Ruta defendible para F0, jitter, shimmer y HNR; estado actual usa Librosa/pYIN como método principal | Desviación de medidas vocales |
 | Biomarcadores no lineales | Implementaciones determinísticas | Completa el vector histórico del modelo | Placeholders y variables incompletas |
 | Persistencia | Feature Store con versión de extractor y esquema | Permite auditoría y comparación entre corridas | Resultados no trazables |
 | Inferencia | Modelo actual de Parkinson (XGBoost) | Reutiliza el clasificador disponible | Entrada incompatible con entrenamiento |
@@ -173,8 +173,6 @@ La ruta actual se organiza en capas progresivas, como se describe en la Tabla II
 **Tabla II**: Organización por capas de la ruta técnica actual de MedDiag.
 
 La decisión metodológica más importante es separar responsabilidades: el audio no es el centro del sistema; el centro es la confiabilidad del biomarcador que llega al modelo.
-
-Successfully merged architecture, pipeline and functionality sections into a unified section; added figure file references and roadmap to Apéndice A.
 
 El shimmer es el biomarcador más beneficiado por este preprocesamiento: su cálculo extrae `max(|ventana|)` por período de F0, y el ruido de alta frecuencia infla sistemáticamente ese máximo en señales sin filtrar. El HNR por análisis cepstral también mejora, ya que el ruido de banda ancha distorsiona la relación entre el pico cepstral (armónico) y la energía residual (ruido). Los biomarcadores no lineales (DFA, D2, RPDE) se benefician indirectamente al recibir una señal con geometría de atractor más limpia.
 
@@ -265,7 +263,7 @@ FUNCIÓN calcular_biomarcadores_nolineales(señal, f0):
   RETORNAR features, faltantes
 ```
 
-**Pseudocódigo 4**: Extracción de biomarcadores no lineales en `nonlinear_features.py`. Cada función falla de forma independiente; los fallos se reportan en `faltantes` sin silenciarse con 0.0 (ver XVI.4).
+**Pseudocódigo 4**: Extracción de biomarcadores no lineales en `nonlinear_features.py`. Cada función falla de forma independiente; los fallos se reportan en `faltantes` sin silenciarse con 0.0 (ver XIII.4).
 
 ### G. Análisis de Múltiples Tomas
 
@@ -293,7 +291,7 @@ Una vez generado el vector de biomarcadores, el pipeline valida que las caracter
 
 ---
 
-## IX. Avances Implementados
+## VII. Avances Implementados
 
 ### A. Biomarcadores No Lineales Determinísticos
 
@@ -329,7 +327,7 @@ Se implementó un sistema de sesiones de voz (`VoiceSession`) que permite al usu
 
 ---
 
-## X. Datasets para Fortalecimiento del Modelo y Validación Externa
+## VIII. Datasets para Fortalecimiento del Modelo y Validación Externa
 
 El dataset clásico de Parkinson (UCI) constituye una línea base útil para reproducir el modelo histórico de MedDiag, pero su tamaño reducido y la ausencia de audio crudo limitan la posibilidad de validar el pipeline completo de captura, preprocesamiento, extracción y control de calidad.
 
@@ -351,7 +349,7 @@ Finalmente, datasets de mayor escala como mPower pueden reservarse para una fase
 
 ---
 
-## XI. Estudio Comparativo de Modelos y Mejora del Clasificador (Fase 3)
+## IX. Estudio Comparativo de Modelos y Mejora del Clasificador (Fase 3)
 
 La Fase 3 del proyecto establece la primera comparativa formal de clasificadores sobre el dataset UCI Oxford Parkinson, documentando el modelo heredado de versiones anteriores como línea base explícita y seleccionando el clasificador de mejor desempeño global para producción.
 
@@ -507,11 +505,11 @@ FUNCIÓN pipeline_completo(registro_audio, usuario):
 
 El repositorio incluye como respaldo un `VotingClassifier` que combina XGBoost, Random Forest y Regresión Logística mediante votación blanda (*soft voting*). Este ensemble no está activo en producción, pero puede activarse para evaluar si la combinación de modelos mejora la estabilidad de las predicciones en condiciones de audio real.
 
-La decisión de no incorporar modelos de audio extremo a extremo (Wav2Vec2, HuBERT, WavLM) es metodológica: estos modelos requieren un corpus amplio de audios etiquetados con metadatos clínicos y control de sesgos. En la fase actual, el enfoque por biomarcadores permite explicar qué variables alimentan el modelo, comparar valores entre extractores y detectar errores de señal. Estos modelos se reservan para una etapa posterior con mayor disponibilidad de datos anotados (ver XVI.12).
+La decisión de no incorporar modelos de audio extremo a extremo (Wav2Vec2, HuBERT, WavLM) es metodológica: estos modelos requieren un corpus amplio de audios etiquetados con metadatos clínicos y control de sesgos. En la fase actual, el enfoque por biomarcadores permite explicar qué variables alimentan el modelo, comparar valores entre extractores y detectar errores de señal. Estos modelos se reservan para una etapa posterior con mayor disponibilidad de datos anotados (ver XIII.12).
 
 ---
 
-## XIII. Resultados del Desarrollo
+## X. Resultados del Desarrollo
 
 Al culminar el desarrollo se obtuvo una plataforma web funcional de tamizaje experimental de Parkinson articulada en tres fases. Los resultados se presentan organizados por fase para reflejar la contribución diferenciada de cada etapa.
 
@@ -546,7 +544,7 @@ El proyecto conserva modelos previamente entrenados para diabetes y enfermedad c
 
 ---
 
-## XIV. Discusión
+## XI. Discusión
 
 ### A. De aplicación de predicción general a laboratorio de voz
 
@@ -576,7 +574,7 @@ La decisión de no incorporar modelos de audio extremo a extremo (Wav2Vec2, HuBE
 
 ---
 
-## XV. Limitaciones
+## XII. Limitaciones
 
 1. **No es diagnóstico clínico**: MedDiag solo entrega una estimación preliminar de riesgo y no reemplaza evaluación neurológica, fonoaudiológica ni médica.
 2. **Dataset histórico limitado**: el modelo actual se apoya en un dataset público de 197 muestras, útil como línea base pero insuficiente para afirmar generalización clínica [7].
@@ -591,7 +589,7 @@ La decisión de no incorporar modelos de audio extremo a extremo (Wav2Vec2, HuBE
 
 ---
 
-## XVI. Recomendaciones y Trabajo Futuro
+## XIII. Recomendaciones y Trabajo Futuro
 
 1. Consolidar Parselmouth/Praat como extractor principal para F0, jitter, shimmer y HNR.
 2. Mantener Librosa como soporte de carga, preprocesamiento y análisis espectral.
@@ -610,9 +608,9 @@ La decisión de no incorporar modelos de audio extremo a extremo (Wav2Vec2, HuBE
 
 ---
 
-## XVII. Conclusiones
+## XIV. Conclusiones
 
-MedDiag evoluciona en esta iteración desde un prototipo de predicción basado en variables manuales hacia una plataforma experimental de tamizaje de voz articulada en tres fases complementarias.
+MedDiag evolucionó  desde un prototipo de predicción basado en variables manuales hacia una plataforma experimental de tamizaje de voz articulada en tres fases complementarias.
 
 La **Fase 1** entrega una interfaz web funcional, multilingüe y centrada en el usuario: flujo de consentimiento informado de cuatro etapas, captura multi-toma con activación explícita del análisis, polling reactivo y visualización de probabilidad junto al indicador de reproducibilidad de sesión. Estas decisiones de diseño no son independientes de los objetivos científicos; el protocolo de captura condiciona directamente la calidad del dato que alimenta el modelo.
 
@@ -627,6 +625,17 @@ MedDiag se define expresamente como herramienta académica de tamizaje experimen
 ## Apéndice A — Pseudocódigos y Algoritmos
 
 Este apéndice presenta versiones completas y parametrizadas de los pseudocódigos citados en el cuerpo del texto. El objetivo es facilitar la reproducibilidad metodológica; las implementaciones ejecutables se encuentran en el repositorio en las rutas indicadas al final de cada pseudocódigo.
+
+Nota aclaratoria: los pseudocódigos aquí publicados son descripciones orientativas diseñadas para ayudar al lector técnico a comprender la lógica del pipeline. Para revisar la implementación exacta usada durante la redacción de este documento, consulte los archivos fuente en el commit `4c2406a` del repositorio:
+
+- [app/services/quality_control.py](https://github.com/admaesmo/MedDiag2/blob/4c2406a/app/services/quality_control.py)
+- [app/services/audio_filters.py](https://github.com/admaesmo/MedDiag2/blob/4c2406a/app/services/audio_filters.py)
+- [app/audio_processing.py](https://github.com/admaesmo/MedDiag2/blob/4c2406a/app/audio_processing.py)
+- [app/services/nonlinear_features.py](https://github.com/admaesmo/MedDiag2/blob/4c2406a/app/services/nonlinear_features.py)
+- [app/services/session_pipeline.py](https://github.com/admaesmo/MedDiag2/blob/4c2406a/app/services/session_pipeline.py)
+- [app/audio_pipeline.py](https://github.com/admaesmo/MedDiag2/blob/4c2406a/app/audio_pipeline.py)
+
+Estas referencias apuntan a la versión del código que documenta el paper; el código puede evolucionar posteriormente.
 
 A.1 Compuerta QA/QC (quality_control.py)
 
