@@ -22,3 +22,6 @@ pandas>=2.0.0
 
 # ML models
 xgboost>=2.0.0
+
+# Password hashing
+bcrypt>=4.0.0

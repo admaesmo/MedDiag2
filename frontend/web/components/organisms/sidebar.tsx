@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Gauge, HeartPulse, History, Mic, Settings, X } from "lucide-react";
+import { Gauge, HeartPulse, History, Mic, Settings, X } from "lucide-react";
 import { useUiStore } from "@/stores/ui-store";
 import { t } from "@/lib/i18n";
 import { NavItem } from "@/components/molecules/nav-item";
@@ -26,13 +26,6 @@ export function Sidebar() {
           <NavItem href="/history" label={t(locale, "nav", "history")} icon={History} />
           <NavItem href="/settings" label={t(locale, "nav", "settings")} icon={Settings} />
         </nav>
-
-        <div className="mt-auto rounded-2xl bg-surface-lowest p-4 shadow-ambient">
-          <div className="flex items-center gap-2 text-primary">
-            <Activity className="h-4 w-4" />
-            <span className="text-sm font-semibold">{t(locale, "sidebar", "systemReady")}</span>
-          </div>
-        </div>
       </aside>
 
       <div className={`fixed inset-0 z-40 lg:hidden ${sidebarOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!sidebarOpen}>
@@ -66,13 +59,6 @@ export function Sidebar() {
             <NavItem href="/history" label={t(locale, "nav", "history")} icon={History} onClick={closeSidebar} />
             <NavItem href="/settings" label={t(locale, "nav", "settings")} icon={Settings} onClick={closeSidebar} />
           </nav>
-
-          <div className="mt-auto rounded-2xl bg-surface-lowest p-4 shadow-ambient">
-            <div className="flex items-center gap-2 text-primary">
-              <Activity className="h-4 w-4" />
-              <span className="text-sm font-semibold">{t(locale, "sidebar", "systemReady")}</span>
-            </div>
-          </div>
         </aside>
       </div>
     </>

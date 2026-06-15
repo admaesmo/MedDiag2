@@ -70,10 +70,13 @@ const es = {
     audioFile: "Archivo de audio",
     actions: "Acciones",
     audioLoadError: "No se pudieron cargar los audios.",
+    resultPositive: "Riesgo detectado",
+    resultNegative: "Sin riesgo",
   },
   parkinson: {
     title: "Métricas de Audio Parkinson",
     subtitle: "Análisis biomédico de voz en tiempo real con retroalimentación tonal y estados seguros.",
+    historyReplayNote: "Resultado reconstruido a partir de los biomarcadores guardados de esta prueba.",
     recordingGuideEyebrow: "Guía de grabación",
     recordingGuideTitle: "Cómo grabar la vocal /a/",
     recordingGuideSubtitle: "Sigue estos pasos para capturar una muestra limpia y estable. La calidad de esta toma afecta directamente los features.",

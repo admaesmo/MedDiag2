@@ -72,7 +72,9 @@ def _run_audio_processing_background(audio_id: int, user_id: int) -> None:
     """Ejecuta el procesamiento en una sesión dedicada para responder rápido a la carga."""
     db = SessionLocal()
     try:
-        process_audio_pipeline(db, audio_id, user_id)
+        # create_diagnosis=False: el diagnóstico se crea explícitamente vía /predict/parkinson.
+        # Así se evita duplicar diagnósticos cuando el frontend llama predict + upload juntos.
+        process_audio_pipeline(db, audio_id, user_id, create_diagnosis=False)
     except Exception:
         # process_audio_pipeline persiste el estado fallido y el contexto del error.
         pass

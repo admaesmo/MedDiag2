@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { isLocalAuthEnabled } from "@/lib/auth-mode";
 import { clearLocalSession } from "@/lib/local-auth";
-import { createClient } from "@/lib/supabase/client";
 import { useUiStore } from "@/stores/ui-store";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/atoms/button";
@@ -19,13 +18,14 @@ export function LogoutButton() {
     if (isLocalAuthEnabled) {
       clearLocalSession();
       router.replace("/login");
-      router.refresh();
       return;
     }
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    const { createClient, isSupabaseConfigured } = await import("@/lib/supabase/client");
+    if (isSupabaseConfigured()) {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    }
     router.replace("/login");
-    router.refresh();
   };
 
   return (

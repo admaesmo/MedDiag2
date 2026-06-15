@@ -9,18 +9,14 @@ import { getDiagnosisHistory, getMyAudio } from "@/lib/api";
 import { useUiStore } from "@/stores/ui-store";
 import { t } from "@/lib/i18n";
 
-function translateStatus(locale: string, status: string) {
-  const normalized = status.toLowerCase();
-  if (normalized === "pending") {
-    return t(locale, "common", "pending");
+function translateResult(locale: string, result?: string) {
+  if (result === "positive") {
+    return t(locale, "history", "resultPositive");
   }
-  if (normalized === "confirmed") {
-    return t(locale, "common", "confirmed");
+  if (result === "negative") {
+    return t(locale, "history", "resultNegative");
   }
-  if (normalized === "discarded") {
-    return t(locale, "common", "discarded");
-  }
-  return status;
+  return t(locale, "common", "notAvailable");
 }
 
 function formatModelLabel(diseaseName: string, diseaseCode: string) {
@@ -72,19 +68,25 @@ export default function HistoryPage() {
           <thead className="bg-surface-low">
             <tr className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
               <th className="px-4 py-3" scope="col">{t(locale, "common", "id")}</th>
-              <th className="px-4 py-3" scope="col">{t(locale, "common", "patient")}</th>
+              <th className="px-4 py-3" scope="col">{t(locale, "common", "userEmail")}</th>
               <th className="px-4 py-3" scope="col">{t(locale, "common", "model")}</th>
+              <th className="px-4 py-3" scope="col">{t(locale, "history", "audioFile")}</th>
               <th className="px-4 py-3" scope="col">{t(locale, "common", "status")}</th>
               <th className="px-4 py-3" scope="col">{t(locale, "common", "probability")}</th>
             </tr>
           </thead>
           <tbody>
-            {historyQuery.data?.map((item) => (
+            {historyQuery.data?.map((item, idx) => (
               <tr key={item.id} className="border-t border-surface-low">
-                <th className="px-4 py-3 font-medium" scope="row">#{item.id}</th>
-                <td className="px-4 py-3">{item.user_name}</td>
+                <th className="px-4 py-3 font-medium" scope="row">#{idx + 1}</th>
+                <td className="px-4 py-3">{item.user_email}</td>
                 <td className="px-4 py-3">{formatModelLabel(item.disease_name, item.disease_code)}</td>
-                <td className="px-4 py-3">{translateStatus(locale, item.status)}</td>
+                <td className="px-4 py-3">{item.audio_filename ?? t(locale, "common", "notAvailable")}</td>
+                <td className="px-4 py-3">
+                  <span className={item.result === "positive" ? "font-semibold text-red-700" : item.result === "negative" ? "font-semibold text-emerald-700" : ""}>
+                    {translateResult(locale, item.result)}
+                  </span>
+                </td>
                 <td className="px-4 py-3 text-primary">{(item.probability * 100).toFixed(2)}%</td>
               </tr>
             ))}
@@ -107,12 +109,12 @@ export default function HistoryPage() {
             </tr>
           </thead>
           <tbody>
-            {audioQuery.data?.items?.map((audio) => {
+            {audioQuery.data?.items?.map((audio, idx) => {
               const ready = audio.is_ready_for_inference ?? isReadyStatus(audio.status);
               const processing = audio.status === "processing";
               return (
                 <tr key={audio.id} className="border-t border-surface-low">
-                  <th className="px-4 py-3 font-medium" scope="row">#{audio.id}</th>
+                  <th className="px-4 py-3 font-medium" scope="row">#{idx + 1}</th>
                   <td className="px-4 py-3">{audio.original_filename ?? "audio"}</td>
                   <td className="px-4 py-3">{translateAudioStatus(locale, audio.status)}</td>
                   <td className="px-4 py-3">
@@ -120,7 +122,7 @@ export default function HistoryPage() {
                       size="sm"
                       variant="secondary"
                       disabled={!ready || processing}
-                      onClick={() => router.push("/parkinson")}
+                      onClick={() => router.push(`/parkinson?audio=${audio.id}`)}
                     >
                       {t(locale, "parkinson", "runInference")}
                     </Button>

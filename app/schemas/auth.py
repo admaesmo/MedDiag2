@@ -23,6 +23,17 @@ class DevTokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class RegisterRequest(BaseModel):
+    email: str = Field(..., example="user@example.com")
+    password: str = Field(..., min_length=6, example="secret123")
+    display_name: Optional[str] = Field(None, example="Juan Pérez")
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(..., example="user@example.com")
+    password: str = Field(..., example="secret123")
+
+
 # ---- Información del usuario actual ----
 
 class UserOut(BaseModel):

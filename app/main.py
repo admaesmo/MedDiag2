@@ -19,8 +19,9 @@ from app.model_predict import (
     predict_heart,
     predict_parkinson,
 )
-from app.models import Disease, Role
+from app.models import Disease, Role, User
 from app.utils.validators import validate_required_features
+from app.services.auth_service import get_current_user
 
 # Routers
 from app.api.auth import router as auth_router
@@ -118,6 +119,7 @@ class HeartRequest(BaseModel):
 class ParkinsonRequest(BaseModel):
     patient: Patient
     features: dict
+    audio_record_id: Optional[int] = None
 
 
 class DiagnosisResponse(BaseModel):
@@ -180,32 +182,33 @@ def create_user(patient: Patient, db: Session = Depends(get_db)):
 
 @app.get("/diagnoses/history")
 def diagnoses_history(
-    name: Optional[str] = None,
-    email: Optional[str] = None,
     limit: int = 50,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if limit <= 0 or limit > 500:
         raise HTTPException(status_code=400, detail="Limit must be between 1 and 500")
 
-    if name:
-        rows = crud.get_diagnoses_by_user_name(db, name, limit)
-    elif email:
-        rows = crud.get_diagnoses_by_user_email(db, email, limit)
-    else:
-        rows = crud.get_recent_diagnoses(db, limit)
+    rows = crud.get_diagnoses_by_user_id(db, current_user.id, limit)
+
+    def _result_for(disease_code: str, probability: float) -> str:
+        threshold = PARKINSON_THRESHOLD if disease_code == "PARK" else 0.5
+        return "positive" if probability >= threshold else "negative"
 
     return [
         {
             "id": r.id,
             "generated_at": r.generated_at,
             "status": r.status,
+            "result": _result_for(r.disease_code, float(r.probability)),
             "final_description": r.final_description,
             "user_name": r.user_name,
             "user_email": r.user_email,
             "disease_name": r.disease_name,
             "disease_code": r.disease_code,
             "probability": float(r.probability),
+            "audio_record_id": r.audio_record_id,
+            "audio_filename": r.audio_filename,
         }
         for r in rows
     ]
@@ -220,6 +223,7 @@ def _save_and_response(
     predictor,
     positive_msg: str,
     negative_msg: str,
+    audio_record_id: Optional[int] = None,
 ) -> DiagnosisResponse:
     validate_required_features(features, ordered_features)
     label, proba = predictor(features)
@@ -239,6 +243,7 @@ def _save_and_response(
         disease_code=disease_code,
         probability=proba,
         final_description=message,
+        audio_record_id=audio_record_id,
     )
     db.commit()
 
@@ -289,4 +294,5 @@ def predict_parkinson_endpoint(payload: ParkinsonRequest, db: Session = Depends(
         predictor=predict_parkinson,
         positive_msg="La persona puede tener Parkinson, consulte a su médico.",
         negative_msg="La persona no tiene Parkinson.",
+        audio_record_id=payload.audio_record_id,
     )

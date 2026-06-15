@@ -45,9 +45,14 @@ export const parkinsonTestFeaturePreset = {
   "PPE": 0.284654,
 } as const;
 
+type PredictionInput = {
+  features?: Partial<typeof defaultFeatures>;
+  audioId?: number;
+};
+
 export function useParkinsonPrediction(accessToken: string | null, email: string) {
   return useMutation({
-    mutationFn: (featureOverrides?: Partial<typeof defaultFeatures>) => {
+    mutationFn: (input?: PredictionInput) => {
       const payload = {
         patient: {
           name: email || "Patient Session",
@@ -55,10 +60,10 @@ export function useParkinsonPrediction(accessToken: string | null, email: string
         },
         features: {
           ...defaultFeatures,
-          ...featureOverrides,
+          ...(input?.features ?? {}),
         },
+        ...(input?.audioId != null ? { audio_record_id: input.audioId } : {}),
       };
-      console.log("[PARKINSON] Sending payload:", JSON.stringify(payload, null, 2));
       return predictParkinson(accessToken as string, payload);
     },
   });

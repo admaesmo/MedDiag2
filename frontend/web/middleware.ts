@@ -29,7 +29,15 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    return NextResponse.next();
+    const res = NextResponse.next();
+    // Wipe any leftover Supabase session cookies so the browser client
+    // never auto-refreshes against the Supabase project URL.
+    for (const cookie of request.cookies.getAll()) {
+      if (cookie.name.startsWith("sb-")) {
+        res.cookies.set(cookie.name, "", { maxAge: 0, path: "/" });
+      }
+    }
+    return res;
   }
 
   return updateSession(request);

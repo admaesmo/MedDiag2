@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Mic, Play } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Mic, Play, Upload } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/atoms/button";
 import { Card } from "@/components/atoms/card";
@@ -12,6 +12,7 @@ import { useParkinsonPrediction } from "@/features/parkinson/mutations";
 import { useVoiceSession } from "@/features/parkinson/use-voice-session";
 import {
   extractVoiceBiomarkersMultipart,
+  getAudioById,
   getAudioFeatures,
   getMyAudio,
   isMockApiEnabled,
@@ -30,20 +31,23 @@ function formatElapsed(totalSeconds: number): string {
 
 export default function ParkinsonPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const locale = useUiStore((state) => state.locale);
-  const consentAccepted = useUiStore((state) => state.parkinsonConsentAccepted);
-  const setConsentAccepted = useUiStore((state) => state.setParkinsonConsentAccepted);
+  const consentAcceptedEmails = useUiStore((state) => state.parkinsonConsentAcceptedEmails);
+  const addConsentEmail = useUiStore((state) => state.addParkinsonConsentEmail);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isExtractingBiomarkers, setIsExtractingBiomarkers] = useState(false);
   const [audioUploadMessage, setAudioUploadMessage] = useState<string | null>(null);
   const [audioUploadError, setAudioUploadError] = useState<string | null>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [inputMode, setInputMode] = useState<"record" | "upload">("record");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [biomarkerMessage, setBiomarkerMessage] = useState<string | null>(null);
   const [biomarkerError, setBiomarkerError] = useState<string | null>(null);
   const [biomarkerResponse, setBiomarkerResponse] = useState<VoiceBiomarkerExtractionResponse | null>(null);
   const [previewFeatures, setPreviewFeatures] = useState<Record<string, number> | null>(null);
+  const [previewAudioId, setPreviewAudioId] = useState<number | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewConsentChecked, setPreviewConsentChecked] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -51,14 +55,14 @@ export default function ParkinsonPage() {
   const [consentError, setConsentError] = useState<string | null>(null);
   const [recordingForTake, setRecordingForTake] = useState<number | null>(null);
   const [confirmingRemoveTake, setConfirmingRemoveTake] = useState<number | null>(null);
-  const [isGuideOpen, setIsGuideOpen] = useState(consentAccepted);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [checks, setChecks] = useState({
     data: false,
     validation: false,
     service: false,
   });
   const firstConsentRef = useRef<HTMLInputElement>(null);
-  const { accessToken, email } = useSessionState();
+  const { accessToken, email, loading: sessionLoading } = useSessionState();
   const recording = useAudioRecording();
   const sessionRecording = useAudioRecording();
   const prediction = useParkinsonPrediction(accessToken, email);
@@ -133,6 +137,7 @@ export default function ParkinsonPage() {
     },
   ];
 
+  const consentAccepted = !sessionLoading && Boolean(email) && consentAcceptedEmails.includes(email);
   const isConsentOpen = !consentAccepted;
 
   useEffect(() => {
@@ -140,6 +145,16 @@ export default function ParkinsonPage() {
       firstConsentRef.current?.focus();
     }
   }, [isConsentOpen]);
+
+  // Show recording guide once per browser session after consent is accepted
+  useEffect(() => {
+    if (!consentAccepted) return;
+    const key = `parkinson-guide-shown-${email}`;
+    if (!sessionStorage.getItem(key)) {
+      setIsGuideOpen(true);
+      sessionStorage.setItem(key, "1");
+    }
+  }, [consentAccepted, email]);
 
   const canProceed = checks.data && checks.validation && checks.service;
 
@@ -159,7 +174,11 @@ export default function ParkinsonPage() {
     }
 
     setConsentError(null);
-    setConsentAccepted(true);
+    if (email) {
+      addConsentEmail(email);
+      const key = `parkinson-guide-shown-${email}`;
+      sessionStorage.setItem(key, "1");
+    }
     setIsGuideOpen(true);
   };
 
@@ -201,14 +220,15 @@ export default function ParkinsonPage() {
       : t(locale, "parkinson", "recordingIdleHint");
 
   // ── Helper: upload del blob después de autorización ──
+  // Retorna el audio_id subido (para vincularlo al diagnóstico) o null si falla.
   const uploadBlobAfterConsent = async (
     blob: Blob,
     fileName: string,
     sourceType: string,
-  ) => {
+  ): Promise<number | null> => {
     if (!accessToken && !mockApiEnabled) {
       setAudioUploadError(t(locale, "parkinson", "authRequiredForUpload"));
-      return;
+      return null;
     }
 
     try {
@@ -220,9 +240,11 @@ export default function ParkinsonPage() {
       setAudioUploadMessage(`${t(locale, "parkinson", "uploadSuccess")}: #${response.audio_id}`);
       queryClient.invalidateQueries({ queryKey: ["audio", "me"] });
       queryClient.invalidateQueries({ queryKey: ["audio", "me", "parkinson"] });
+      return response.audio_id;
     } catch {
       setAudioUploadMessage(null);
       setAudioUploadError(t(locale, "parkinson", "uploadError"));
+      return null;
     } finally {
       setIsUploadingAudio(false);
     }
@@ -265,7 +287,7 @@ export default function ParkinsonPage() {
         : audioBlob.type.includes("ogg")
           ? "ogg"
           : "wav";
-    const uploadFileName = `parkinson-sample.${extension}`;
+    const uploadFileName = `recording-${Date.now()}.${extension}`;
 
     // 1. Extraer biomarcadores
     let biomarkers: VoiceBiomarkerExtractionResponse;
@@ -289,6 +311,7 @@ export default function ParkinsonPage() {
     // 2. Mostrar modal de pre-análisis con los features completos
     const features = biomarkers.parkinson_model_input.features;
     setPreviewFeatures(features);
+    setPreviewAudioId(null);
     setPreviewConsentChecked(false);
     setPreviewError(null);
     setIsPreviewOpen(true);
@@ -362,6 +385,7 @@ export default function ParkinsonPage() {
     // 2. Mostrar modal de pre-análisis
     const features = biomarkers.parkinson_model_input.features;
     setPreviewFeatures(features);
+    setPreviewAudioId(null);
     setPreviewConsentChecked(false);
     setPreviewError(null);
     setIsPreviewOpen(true);
@@ -382,18 +406,20 @@ export default function ParkinsonPage() {
           : null;
 
   // ── Handle: botón "Run Inference" (desde audio ya subido) ──
-  const handleInferenceClick = async () => {
+  const handleInferenceClick = async (audioId?: number) => {
     if (!accessToken) {
       setAudioUploadError(t(locale, "parkinson", "authRequiredForUpload"));
       return;
     }
 
-    if (!latestAudio) {
+    const targetId = audioId ?? latestAudio?.id;
+    if (!targetId) {
       setAudioUploadError(t(locale, "parkinson", "noAudioForInference"));
       return;
     }
 
-    if (!isAudioReady || isAudioProcessing) {
+    // Solo bloquear por estado cuando se usa el audio más reciente (no al venir del historial).
+    if (audioId === undefined && (!isAudioReady || isAudioProcessing)) {
       setAudioUploadError(t(locale, "parkinson", "audioStillProcessing"));
       return;
     }
@@ -403,8 +429,9 @@ export default function ParkinsonPage() {
       setPreviewError(null);
       setPreviewConsentChecked(false);
       setIsLoadingPreview(true);
-      const response = await getAudioFeatures(accessToken, latestAudio.id);
+      const response = await getAudioFeatures(accessToken, targetId);
       setPreviewFeatures(response.features);
+      setPreviewAudioId(targetId);
       setIsPreviewOpen(true);
     } catch {
       setAudioUploadError(t(locale, "parkinson", "featureLoadError"));
@@ -413,8 +440,70 @@ export default function ParkinsonPage() {
     }
   };
 
+  // ── Al llegar desde el historial (?audio=ID): cargar features de esa prueba ──
+  const loadedAudioParamRef = useRef<string | null>(null);
+  useEffect(() => {
+    const audioParam = searchParams.get("audio");
+    if (!audioParam || !accessToken || isConsentOpen) return;
+    if (loadedAudioParamRef.current === audioParam) return;
+    loadedAudioParamRef.current = audioParam;
+    const audioId = Number(audioParam);
+    if (Number.isFinite(audioId)) {
+      void handleInferenceClick(audioId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, accessToken, isConsentOpen]);
+
+  // Construye un panel de biomarcadores a partir de los features del modelo
+  // (usado al re-ejecutar una prueba desde el historial).
+  const buildBiomarkerResponseFromFeatures = (
+    features: Record<string, number>,
+    meta: { original_filename?: string | null; mime_type?: string | null; duration_seconds?: number | null } | null,
+    inference: { prediction: number; probability: number; message: string },
+  ): VoiceBiomarkerExtractionResponse => ({
+    status: "ok",
+    audio: {
+      original_filename: meta?.original_filename ?? null,
+      content_type: meta?.mime_type ?? null,
+      sample_rate_hz: 16000,
+      channels: 1,
+      normalized_format: "wav",
+      duration_seconds: meta?.duration_seconds ?? 0,
+    },
+    biomarkers: {
+      pitch_mean: features["MDVP:Fo(Hz)"],
+      pitch_min: features["MDVP:Flo(Hz)"],
+      pitch_max: features["MDVP:Fhi(Hz)"],
+      jitter_local: features["MDVP:Jitter(%)"],
+      shimmer_local: features["MDVP:Shimmer"],
+      hnr_mean: features["HNR"],
+    },
+    parkinson_model_bridge: {
+      model_name: "parkinson",
+      mapped_features: {},
+      missing_features: [],
+      ready_for_direct_inference: true,
+      note: t(locale, "parkinson", "historyReplayNote"),
+    },
+    parkinson_model_input: {
+      model_name: "parkinson",
+      features,
+      feature_count: Object.keys(features).length,
+      required_feature_count: 22,
+      ready_for_direct_inference: true,
+      note: t(locale, "parkinson", "historyReplayNote"),
+    },
+    parkinson_inference: {
+      model_name: "parkinson",
+      disease_code: "PARK",
+      prediction: inference.prediction,
+      probability: inference.probability,
+      message: inference.message,
+    },
+  });
+
   // ── Handle: confirmar inferencia desde el modal ──
-  const handleConfirmInference = () => {
+  const handleConfirmInference = async () => {
     if (!previewFeatures) {
       setPreviewError(t(locale, "parkinson", "previewNoFeatures"));
       return;
@@ -426,43 +515,57 @@ export default function ParkinsonPage() {
     }
 
     setPreviewError(null);
+    setIsPreviewOpen(false);
 
-    // Ejecutar inferencia
-    prediction.mutate(previewFeatures);
+    const features = previewFeatures;
+    const fromHistory = previewAudioId != null;
+    let audioId: number | undefined = previewAudioId ?? undefined;
 
-    // Si hay una grabación pendiente por subir, subirla
+    // 1. Subir primero (si hay pendiente) para obtener el audio_id y vincularlo al diagnóstico.
     if (pendingRecordRef.current) {
       const { blob, fileName, sourceType } = pendingRecordRef.current;
-      uploadBlobAfterConsent(blob, fileName, sourceType);
       pendingRecordRef.current = null;
-    }
-
-    // Si hay un archivo pendiente por subir, subirlo
-    if (pendingUploadRef.current) {
+      const uploadedId = await uploadBlobAfterConsent(blob, fileName, sourceType);
+      if (uploadedId != null) audioId = uploadedId;
+    } else if (pendingUploadRef.current) {
       const { file, fileName } = pendingUploadRef.current;
-      if (accessToken || mockApiEnabled) {
-        (async () => {
-          try {
-            setIsUploadingFile(true);
-            const response = await uploadAudioMultipart(accessToken ?? "", file, fileName, {
-              sourceType: "upload",
-              languageCode: locale.split("-")[0],
-            });
-            setAudioUploadMessage(`${t(locale, "parkinson", "uploadAudioSuccess")}: #${response.audio_id}`);
-            queryClient.invalidateQueries({ queryKey: ["audio", "me"] });
-            queryClient.invalidateQueries({ queryKey: ["audio", "me", "parkinson"] });
-          } catch {
-            setAudioUploadMessage(null);
-            setAudioUploadError(t(locale, "parkinson", "uploadAudioError"));
-          } finally {
-            setIsUploadingFile(false);
-          }
-        })();
-      }
       pendingUploadRef.current = null;
+      if (accessToken || mockApiEnabled) {
+        try {
+          setIsUploadingFile(true);
+          const response = await uploadAudioMultipart(accessToken ?? "", file, fileName, {
+            sourceType: "upload",
+            languageCode: locale.split("-")[0],
+          });
+          setAudioUploadMessage(`${t(locale, "parkinson", "uploadAudioSuccess")}: #${response.audio_id}`);
+          queryClient.invalidateQueries({ queryKey: ["audio", "me"] });
+          queryClient.invalidateQueries({ queryKey: ["audio", "me", "parkinson"] });
+          audioId = response.audio_id;
+        } catch {
+          setAudioUploadMessage(null);
+          setAudioUploadError(t(locale, "parkinson", "uploadAudioError"));
+        } finally {
+          setIsUploadingFile(false);
+        }
+      }
     }
 
-    setIsPreviewOpen(false);
+    // 2. Ejecutar inferencia vinculada al audio.
+    try {
+      const inference = await prediction.mutateAsync({ features, audioId });
+      queryClient.invalidateQueries({ queryKey: ["history", "full"] });
+
+      // 3. Si la prueba viene del historial, reconstruir el panel de biomarcadores.
+      if (fromHistory && accessToken) {
+        const meta = await getAudioById(audioId as number, accessToken).catch(() => null);
+        setBiomarkerResponse(buildBiomarkerResponseFromFeatures(features, meta, inference));
+        setBiomarkerMessage(t(locale, "parkinson", "biomarkerSuccess"));
+      }
+    } catch {
+      setAudioUploadError(t(locale, "parkinson", "inferenceError"));
+    } finally {
+      setPreviewAudioId(null);
+    }
   };
 
   return (
@@ -710,56 +813,109 @@ export default function ParkinsonPage() {
             ))}
           </div>
 
-          <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:flex-wrap sm:justify-center">
-            <div className="flex items-center gap-3">
-              <Button
-                size="lg"
-                onClick={handleRecordButtonClick}
-                disabled={isConsentOpen || isUploadingAudio || isExtractingBiomarkers || isUploadingFile}
+          {/* Mode toggle */}
+          <div className="mt-8 flex justify-center">
+            <div className="inline-flex rounded-xl border border-surface-low bg-surface-low p-1">
+              <button
+                type="button"
+                onClick={() => setInputMode("record")}
+                disabled={isConsentOpen}
+                className={`flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold transition-all ${
+                  inputMode === "record"
+                    ? "bg-white text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
               >
-                <Play className="mr-2 h-4 w-4" />
-                {isExtractingBiomarkers
-                  ? t(locale, "parkinson", "extractingBiomarkers")
-                  : isUploadingAudio
-                  ? t(locale, "parkinson", "uploading")
-                  : recording.isRecording
-                    ? t(locale, "parkinson", "stop")
-                    : t(locale, "parkinson", "start")}
-              </Button>
-              <Button
-                variant="secondary"
-                size="lg"
-                onClick={handleInferenceClick}
-                disabled={!canRunInference || prediction.isPending || isConsentOpen || isLoadingPreview}
+                <Mic className="h-4 w-4" />
+                {t(locale, "parkinson", "start")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputMode("upload")}
+                disabled={isConsentOpen || recording.isRecording}
+                className={`flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold transition-all ${
+                  inputMode === "upload"
+                    ? "bg-white text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
               >
-                {prediction.isPending
-                  ? t(locale, "parkinson", "processing")
-                  : isLoadingPreview
-                    ? t(locale, "parkinson", "previewLoading")
-                    : isAudioProcessing
-                    ? t(locale, "parkinson", "audioProcessing")
-                    : t(locale, "parkinson", "runInference")}
-              </Button>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".wav,.mp3,.ogg,.webm,.m4a,audio/*"
-                className="hidden"
-                onChange={handleFileSelected}
-              />
-              <Button
-                variant="ghost"
-                size="lg"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isConsentOpen || isUploadingFile || recording.isRecording}
-              >
+                <Upload className="h-4 w-4" />
                 {isUploadingFile
                   ? t(locale, "parkinson", "uploading")
                   : t(locale, "parkinson", "uploadAudioFile")}
-              </Button>
+              </button>
             </div>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".wav,.mp3,.ogg,.webm,.m4a,audio/*"
+            className="hidden"
+            onChange={handleFileSelected}
+          />
+
+          {/* Action buttons per mode */}
+          <div className="mt-4 flex flex-col items-center gap-3">
+            {inputMode === "record" ? (
+              <div className="flex items-center gap-3">
+                <Button
+                  size="lg"
+                  onClick={handleRecordButtonClick}
+                  disabled={isConsentOpen || isUploadingAudio || isExtractingBiomarkers || isUploadingFile}
+                >
+                  <Mic className="mr-2 h-4 w-4" />
+                  {isExtractingBiomarkers
+                    ? t(locale, "parkinson", "extractingBiomarkers")
+                    : isUploadingAudio
+                    ? t(locale, "parkinson", "uploading")
+                    : recording.isRecording
+                      ? t(locale, "parkinson", "stop")
+                      : t(locale, "parkinson", "start")}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  onClick={() => handleInferenceClick()}
+                  disabled={!canRunInference || prediction.isPending || isConsentOpen || isLoadingPreview}
+                >
+                  {prediction.isPending
+                    ? t(locale, "parkinson", "processing")
+                    : isLoadingPreview
+                      ? t(locale, "parkinson", "previewLoading")
+                      : isAudioProcessing
+                      ? t(locale, "parkinson", "audioProcessing")
+                      : t(locale, "parkinson", "runInference")}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <Button
+                  size="lg"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isConsentOpen || isUploadingFile || recording.isRecording}
+                >
+                  <Play className="mr-2 h-4 w-4" />
+                  {isUploadingFile
+                    ? t(locale, "parkinson", "uploading")
+                    : t(locale, "parkinson", "uploadAudioFile")}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  onClick={() => handleInferenceClick()}
+                  disabled={!canRunInference || prediction.isPending || isConsentOpen || isLoadingPreview}
+                >
+                  {prediction.isPending
+                    ? t(locale, "parkinson", "processing")
+                    : isLoadingPreview
+                      ? t(locale, "parkinson", "previewLoading")
+                      : isAudioProcessing
+                      ? t(locale, "parkinson", "audioProcessing")
+                      : t(locale, "parkinson", "runInference")}
+                </Button>
+              </div>
+            )}
           </div>
 
           {!mockApiEnabled && latestAudio ? (

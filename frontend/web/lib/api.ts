@@ -48,12 +48,15 @@ export type DiagnosisHistoryItem = {
   id: number;
   generated_at: string;
   status: "pending" | "confirmed" | "discarded";
+  result?: "positive" | "negative";
   final_description: string;
   user_name: string;
   user_email: string;
   disease_name: string;
   disease_code: "DIAB" | "HEART" | "PARK";
   probability: number;
+  audio_record_id?: number | null;
+  audio_filename?: string | null;
 };
 
 export type PredictionPayload = {
@@ -62,6 +65,7 @@ export type PredictionPayload = {
     email?: string;
   };
   features: Record<string, number>;
+  audio_record_id?: number;
 };
 
 export type PredictionResponse = {
@@ -245,6 +249,20 @@ export async function issueDevToken(email: string, role = "patient", displayName
       role,
       display_name: displayName,
     }),
+  });
+}
+
+export async function registerUser(email: string, password: string, displayName?: string): Promise<DevTokenResponse> {
+  return apiRequest<DevTokenResponse>("/auth/register", undefined, {
+    method: "POST",
+    body: JSON.stringify({ email, password, display_name: displayName }),
+  });
+}
+
+export async function loginUser(email: string, password: string): Promise<DevTokenResponse> {
+  return apiRequest<DevTokenResponse>("/auth/login", undefined, {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
   });
 }
 

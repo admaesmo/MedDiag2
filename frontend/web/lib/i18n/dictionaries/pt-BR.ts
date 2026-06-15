@@ -70,10 +70,13 @@ const ptBR = {
     audioFile: "Arquivo de áudio",
     actions: "Ações",
     audioLoadError: "Não foi possível carregar os áudios.",
+    resultPositive: "Risco detectado",
+    resultNegative: "Sem risco",
   },
   parkinson: {
     title: "Métricas de Áudio Parkinson",
     subtitle: "Análise biomédica de voz em tempo real com feedback tonal e estados seguros.",
+    historyReplayNote: "Resultado reconstruído a partir dos biomarcadores salvos deste teste.",
     recordingGuideEyebrow: "Guia de gravação",
     recordingGuideTitle: "Como gravar a vogal /a/",
     recordingGuideSubtitle: "Siga estes passos para capturar uma amostra limpa e estável. Esta tomada afeta diretamente a qualidade dos features.",

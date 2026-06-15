@@ -70,10 +70,13 @@ const en = {
     audioFile: "Audio file",
     actions: "Actions",
     audioLoadError: "Failed to load audio records.",
+    resultPositive: "Risk detected",
+    resultNegative: "No risk",
   },
   parkinson: {
     title: "Parkinson Audio Metrics",
     subtitle: "Real-time biomedical voice analysis with tonal feedback and safe states.",
+    historyReplayNote: "Result reconstructed from the saved biomarkers of this test.",
     recordingGuideEyebrow: "Recording guide",
     recordingGuideTitle: "How to record the /a/ vowel",
     recordingGuideSubtitle: "Follow these steps to capture a clean, stable sample. This take directly affects feature quality.",

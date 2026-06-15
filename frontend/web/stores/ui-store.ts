@@ -7,11 +7,11 @@ import { AppLocale, defaultLocale } from "@/lib/i18n/config";
 type UiState = {
   locale: AppLocale;
   sidebarOpen: boolean;
-  parkinsonConsentAccepted: boolean;
+  parkinsonConsentAcceptedEmails: string[];
   setLocale: (locale: AppLocale) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
-  setParkinsonConsentAccepted: (accepted: boolean) => void;
+  addParkinsonConsentEmail: (email: string) => void;
 };
 
 export const useUiStore = create<UiState>()(
@@ -19,17 +19,23 @@ export const useUiStore = create<UiState>()(
     (set) => ({
       locale: defaultLocale,
       sidebarOpen: true,
-      parkinsonConsentAccepted: false,
+      parkinsonConsentAcceptedEmails: [],
       setLocale: (locale) => set({ locale }),
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
-      setParkinsonConsentAccepted: (accepted) => set({ parkinsonConsentAccepted: accepted }),
+      addParkinsonConsentEmail: (email) =>
+        set((state) => ({
+          parkinsonConsentAcceptedEmails: state.parkinsonConsentAcceptedEmails.includes(email)
+            ? state.parkinsonConsentAcceptedEmails
+            : [...state.parkinsonConsentAcceptedEmails, email],
+        })),
     }),
     {
       name: "meddiag-ui-store",
+      skipHydration: true,
       partialize: (state) => ({
         locale: state.locale,
-        parkinsonConsentAccepted: state.parkinsonConsentAccepted,
+        parkinsonConsentAcceptedEmails: state.parkinsonConsentAcceptedEmails,
       }),
     },
   ),

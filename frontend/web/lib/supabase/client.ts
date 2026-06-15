@@ -1,19 +1,18 @@
 import { createBrowserClient } from "@supabase/ssr";
+import { isLocalAuthEnabled } from "@/lib/auth-mode";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-function getSupabaseEnv() {
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Missing Supabase public environment variables.");
-  }
-
-  return { supabaseUrl, supabaseKey };
+export function isSupabaseConfigured(): boolean {
+  return !isLocalAuthEnabled && Boolean(supabaseUrl) && Boolean(supabaseKey);
 }
 
 export function createClient() {
-  const env = getSupabaseEnv();
-  return createBrowserClient(env.supabaseUrl, env.supabaseKey);
+  if (!isSupabaseConfigured()) {
+    throw new Error("Supabase is not configured or local auth mode is active.");
+  }
+  return createBrowserClient(supabaseUrl!, supabaseKey!);
 }

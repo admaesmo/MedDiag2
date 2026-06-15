@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { isLocalAuthEnabled } from "@/lib/auth-mode";
 import { getLocalSession } from "@/lib/local-auth";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 type SessionState = {
   accessToken: string | null;
@@ -34,6 +34,11 @@ export function useSessionState(): SessionState {
       return () => {
         window.removeEventListener("storage", syncLocalState);
       };
+    }
+
+    if (!isSupabaseConfigured()) {
+      setState({ accessToken: null, email: "", loading: false });
+      return;
     }
 
     const supabase = createClient();
