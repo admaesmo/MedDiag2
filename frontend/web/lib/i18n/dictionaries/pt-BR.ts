@@ -194,6 +194,8 @@ const ptBR = {
     sessionInsufficientTakes: "São necessárias pelo menos 2 tomadas processadas para analisar.",
     sessionError: "Erro na sessão. Tente novamente.",
     sessionReset: "Nova sessão",
+    sessionFailedHint: "A análise da sessão falhou. Você pode reabri-la para ajustar as tomadas e tentar novamente.",
+    sessionReopen: "Reabrir sessão",
     sessionAuthRequired: "É necessário entrar para usar a análise multi-tomada.",
   },
   settings: {

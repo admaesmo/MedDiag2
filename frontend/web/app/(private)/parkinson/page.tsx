@@ -9,7 +9,12 @@ import { Card } from "@/components/atoms/card";
 import { useSessionState } from "@/features/auth/use-session";
 import { useAudioRecording } from "@/features/parkinson/use-audio-recording";
 import { useParkinsonPrediction } from "@/features/parkinson/mutations";
-import { useVoiceSession } from "@/features/parkinson/use-voice-session";
+import {
+  useVoiceSession,
+  isTakeProcessed,
+  isTakeFailed,
+  isTakeInProgress,
+} from "@/features/parkinson/use-voice-session";
 import {
   extractVoiceBiomarkersMultipart,
   getAudioById,
@@ -107,7 +112,9 @@ export default function ParkinsonPage() {
       return hasProcessing ? 2000 : false;
     },
   });
-  const latestAudio = audioQuery.data?.items?.[0] ?? null;
+  // Excluir tomas de sesión multi-toma: el panel superior es solo para el flujo de toma única.
+  const latestAudio =
+    audioQuery.data?.items?.find((item) => item.session_id == null) ?? null;
   const isAudioReady = Boolean(
     latestAudio &&
       (latestAudio.is_ready_for_inference ?? ["processed", "transcribed"].includes(latestAudio.status)),
@@ -190,7 +197,7 @@ export default function ParkinsonPage() {
 
   const canProceed = checks.data && checks.validation && checks.service;
 
-  const validSessionTakes = voiceSession.session?.takes.filter((tk) => tk.status === "processed").length ?? 0;
+  const validSessionTakes = voiceSession.session?.takes.filter((tk) => isTakeProcessed(tk.status)).length ?? 0;
   const activePrediction = prediction.data ?? null;
   const result = useMemo(() => {
     if (!activePrediction) {
@@ -1166,9 +1173,12 @@ export default function ParkinsonPage() {
                   const isThisRecording = sessionRecording.isRecording && recordingForTake === takeNumber;
                   const isAddingThis = voiceSession.addingTakeNumber === takeNumber;
                   const isConfirmingRemove = confirmingRemoveTake === existingTake?.audio_record_id;
+                  // Solo se permite borrar una toma en estado terminal de fallo.
+                  // Borrar una toma aún en proceso provoca registros "processed"
+                  // huérfanos (el pipeline en background termina tras el borrado).
                   const canDelete =
                     Boolean(existingTake) &&
-                    existingTake?.status !== "processed" &&
+                    isTakeFailed(existingTake!.status) &&
                     voiceSession.session?.status === "collecting";
 
                   return (
@@ -1182,15 +1192,15 @@ export default function ParkinsonPage() {
                         </span>
                         {existingTake ? (
                           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                            existingTake.status === "processing"
+                            isTakeInProgress(existingTake.status)
                               ? "bg-yellow-100 text-yellow-800"
-                              : existingTake.status === "processed"
+                              : isTakeProcessed(existingTake.status)
                                 ? "bg-emerald-100 text-emerald-800"
                                 : "bg-red-100 text-red-800"
                           }`}>
-                            {existingTake.status === "processing"
+                            {isTakeInProgress(existingTake.status)
                               ? t(locale, "parkinson", "sessionTakeProcessing")
-                              : existingTake.status === "processed"
+                              : isTakeProcessed(existingTake.status)
                                 ? t(locale, "parkinson", "sessionTakeProcessed")
                                 : t(locale, "parkinson", "sessionTakeFailed")}
                           </span>
@@ -1315,6 +1325,21 @@ export default function ParkinsonPage() {
                     {voiceSession.isAnalyzing
                       ? t(locale, "parkinson", "sessionAnalyzing")
                       : t(locale, "parkinson", "sessionAnalyze")}
+                  </Button>
+                </div>
+              )}
+
+              {voiceSession.session.status === "failed" && (
+                <div className="space-y-2 pt-2">
+                  <p className="text-xs text-red-600">
+                    {t(locale, "parkinson", "sessionFailedHint")}
+                  </p>
+                  <Button
+                    className="w-full"
+                    variant="secondary"
+                    onClick={() => void voiceSession.reopen()}
+                  >
+                    {t(locale, "parkinson", "sessionReopen")}
                   </Button>
                 </div>
               )}

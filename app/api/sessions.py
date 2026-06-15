@@ -75,7 +75,9 @@ def _run_take_pipeline_background(audio_id: int, user_id: int) -> None:
     try:
         process_audio_pipeline(db, audio_id, user_id)
     except Exception:
-        pass
+        # process_audio_pipeline ya marca status=failed y registra el motivo;
+        # aquí solo dejamos rastro de fallos imprevistos (p. ej. de infraestructura).
+        logger.exception("Pipeline en background falló para toma audio_id=%d", audio_id)
     finally:
         db.close()
 
@@ -321,3 +323,34 @@ def remove_take(
     audio_service.soft_delete_audio(db, record)
     db.commit()
     logger.info("Toma %d retirada de sesión %d por usuario %d", take_id, session_id, current_user.id)
+
+
+# ---------------------------------------------------------------------------
+# POST /sessions/{id}/reopen — Reabrir una sesión fallida
+# ---------------------------------------------------------------------------
+
+@router.post("/{session_id}/reopen", response_model=VoiceSessionOut)
+def reopen_session(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Devuelve una sesión 'failed' al estado 'collecting' para permitir agregar,
+    retirar tomas y reintentar el análisis sin descartar las tomas ya válidas.
+    """
+    session = _get_session_or_404(db, session_id)
+    _assert_owner(session, current_user, db)
+
+    if session.status != "failed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Solo se pueden reabrir sesiones en estado 'failed' (estado actual: '{session.status}').",
+        )
+
+    session.status = "collecting"
+    db.commit()
+    logger.info("Sesión %d reabierta (failed → collecting) por usuario %d", session_id, current_user.id)
+
+    summary = get_session_with_takes_summary(db, session)
+    return VoiceSessionOut(**summary)

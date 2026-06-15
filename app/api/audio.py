@@ -52,6 +52,7 @@ def _to_audio_record_out(record) -> AudioRecordOut:
         id=record.id,
         uuid=record.uuid,
         user_id=record.user_id,
+        session_id=record.session_id,
         source_type=record.source_type,
         original_filename=record.original_filename,
         mime_type=record.mime_type,
