@@ -15,6 +15,7 @@ export type AudioRecordOut = {
   id: number;
   uuid: string;
   user_id: number;
+  session_id?: number | null;
   source_type: string;
   original_filename: string;
   mime_type: string;
@@ -833,6 +834,10 @@ export async function getVoiceSession(accessToken: string, sessionId: number): P
 
 export async function analyzeVoiceSession(accessToken: string, sessionId: number): Promise<SessionAnalysisResult> {
   return apiRequest<SessionAnalysisResult>(`/sessions/${sessionId}/analyze`, accessToken, { method: "POST" });
+}
+
+export async function reopenVoiceSession(accessToken: string, sessionId: number): Promise<VoiceSessionOut> {
+  return apiRequest<VoiceSessionOut>(`/sessions/${sessionId}/reopen`, accessToken, { method: "POST" });
 }
 
 export async function removeSessionTake(accessToken: string, sessionId: number, takeId: number): Promise<void> {

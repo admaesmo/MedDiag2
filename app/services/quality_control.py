@@ -36,7 +36,9 @@ logger = logging.getLogger(__name__)
 DURACION_MINIMA_S = 0.8          # segundos
 MAX_RAZON_RECORTE = 0.01         # 1 % de muestras recortadas → rechazar
 RMS_MINIMO = 0.005               # por debajo → demasiado silencio / baja energía
-MAX_RAZON_SILENCIO = 0.60        # 60 % de tramas casi en cero → rechazar (las grabaciones de micrófono incluyen pausas)
+MAX_RAZON_SILENCIO = 0.90        # 90 % de tramas casi en cero → rechazar. Las grabaciones de micrófono incluyen
+                                 # silencio inicial/final y pausas naturales; un umbral más estricto (0.60) rechazaba
+                                 # casi toda voz real. Mejora futura: recortar silencio (VAD) antes de medir.
 SNR_MINIMO_DB = 10.0             # menos de 10 dB → demasiado ruidoso
 UMBRAL_RECORTE = 0.98            # |muestra| >= umbral → candidato a recorte
 

@@ -36,6 +36,20 @@ class SessionPipelineError(Exception):
 
 
 # ---------------------------------------------------------------------------
+# Tomas activas (excluye borrado lógico)
+# ---------------------------------------------------------------------------
+#
+# La relación VoiceSession.takes NO filtra deleted_at, así que toda lectura de
+# tomas debe pasar por este helper. De lo contrario las tomas retiradas siguen
+# apareciendo en la UI y desfasan la numeración de slots (ver
+# Documentacion/analisis_multitoma_mejoras.md).
+
+def active_takes(session: VoiceSession) -> List[AudioRecord]:
+    """Devuelve las tomas no borradas de la sesión, ordenadas por take_number."""
+    return [t for t in session.takes if t.deleted_at is None]
+
+
+# ---------------------------------------------------------------------------
 # Agregación de biomarcadores
 # ---------------------------------------------------------------------------
 
@@ -94,7 +108,7 @@ def _load_valid_feature_sets(
     valid_features: List[Dict[str, float]] = []
     valid_ids: List[int] = []
 
-    for take in session.takes:
+    for take in active_takes(session):
         if take.status != "processed":
             continue
         row = get_latest_feature_set(db, take.id)
@@ -254,7 +268,7 @@ def get_session_with_takes_summary(db: Session, session: VoiceSession) -> Dict:
     from app.services.quality_control import get_latest_quality_report
 
     takes_summary = []
-    for take in session.takes:
+    for take in active_takes(session):
         qc = get_latest_quality_report(db, take.id)
         takes_summary.append({
             "audio_record_id": take.id,
@@ -281,10 +295,22 @@ def get_session_with_takes_summary(db: Session, session: VoiceSession) -> Dict:
 
 
 def next_take_number(session: VoiceSession) -> int:
-    """Devuelve el número de toma siguiente para esta sesión."""
-    existing = [t.take_number for t in session.takes if t.take_number is not None]
-    return max(existing, default=0) + 1
+    """
+    Devuelve el número de slot libre más bajo dentro de [1, max_takes].
+
+    Solo considera tomas activas (no borradas), de modo que al retirar una toma
+    su slot queda disponible y el reintento lo reutiliza (en vez de crear un
+    número fuera del rango de slots que la UI renderiza).
+    """
+    ocupados = {
+        t.take_number for t in active_takes(session) if t.take_number is not None
+    }
+    for n in range(1, session.max_takes + 1):
+        if n not in ocupados:
+            return n
+    # Sin slots libres: caer al siguiente número (el límite se valida aparte).
+    return max(ocupados, default=0) + 1
 
 
 def count_registered_takes(session: VoiceSession) -> int:
-    return len([t for t in session.takes if t.deleted_at is None])
+    return len(active_takes(session))

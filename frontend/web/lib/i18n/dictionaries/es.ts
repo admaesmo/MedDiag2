@@ -194,6 +194,8 @@ const es = {
     sessionInsufficientTakes: "Se necesitan al menos 2 tomas procesadas para analizar.",
     sessionError: "Error en la sesión. Intenta de nuevo.",
     sessionReset: "Nueva sesión",
+    sessionFailedHint: "El análisis de la sesión falló. Puedes reabrirla para ajustar las tomas y reintentar.",
+    sessionReopen: "Reabrir sesión",
     sessionAuthRequired: "Debes iniciar sesión para usar el análisis multi-toma.",
   },
   settings: {

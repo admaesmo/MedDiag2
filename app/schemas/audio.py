@@ -20,6 +20,7 @@ class AudioRecordOut(BaseModel):
     id: int
     uuid: str
     user_id: int
+    session_id: Optional[int] = None
     source_type: Optional[str] = None
     original_filename: Optional[str] = None
     mime_type: Optional[str] = None

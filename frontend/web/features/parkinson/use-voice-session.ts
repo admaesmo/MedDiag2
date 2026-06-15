@@ -9,10 +9,29 @@ import {
   getVoiceSession,
   analyzeVoiceSession,
   removeSessionTake,
+  reopenVoiceSession,
 } from "@/lib/api";
 
 const POLLING_INTERVAL_MS = 2000;
 const POLLING_TIMEOUT_MS = 60000;
+
+// Clasificación de estados de una toma.
+// El pipeline pasa por estados intermedios (uploaded, processing, quality_checked,
+// partial_features) antes de llegar a un estado terminal. Tratarlos todos como
+// "en progreso" evita que el polling se detenga antes de tiempo y que la UI
+// muestre "Fallida" sobre una toma que aún se está procesando.
+const TAKE_TERMINAL_OK = ["processed", "transcribed"];
+const TAKE_TERMINAL_FAIL = ["failed", "rejected"];
+
+export function isTakeInProgress(status: string): boolean {
+  return !TAKE_TERMINAL_OK.includes(status) && !TAKE_TERMINAL_FAIL.includes(status);
+}
+export function isTakeProcessed(status: string): boolean {
+  return TAKE_TERMINAL_OK.includes(status);
+}
+export function isTakeFailed(status: string): boolean {
+  return TAKE_TERMINAL_FAIL.includes(status);
+}
 
 export type VoiceSessionHook = {
   session: VoiceSessionOut | null;
@@ -26,6 +45,7 @@ export type VoiceSessionHook = {
   addTake: (blob: Blob, takeNumber: number, fileName: string, sourceType?: string) => Promise<void>;
   removeTake: (takeId: number) => Promise<void>;
   analyze: () => Promise<void>;
+  reopen: () => Promise<void>;
   reset: () => void;
 };
 
@@ -93,7 +113,7 @@ export function useVoiceSession(accessToken: string | null): VoiceSessionHook {
         const currentSession = await getVoiceSession(accessToken!, sessionId);
         setSession(currentSession);
 
-        const hasProcessing = currentSession.takes.some((tk) => tk.status === "processing");
+        const hasProcessing = currentSession.takes.some((tk) => isTakeInProgress(tk.status));
         if (hasProcessing && isPollingRef.current) {
           pollingTimeoutRef.current = setTimeout(poll, POLLING_INTERVAL_MS);
         } else {
@@ -141,7 +161,7 @@ export function useVoiceSession(accessToken: string | null): VoiceSessionHook {
     try {
       await addSessionTake(accessToken, session.id, blob, fileName, sourceType);
       const updated = await refreshSession(session.id);
-      if (updated && updated.takes.some((tk) => tk.status === "processing")) {
+      if (updated && updated.takes.some((tk) => isTakeInProgress(tk.status))) {
         startPolling(session.id);
       }
     } catch (err: unknown) {
@@ -157,7 +177,7 @@ export function useVoiceSession(accessToken: string | null): VoiceSessionHook {
     try {
       await removeSessionTake(accessToken, session.id, takeId);
       const updated = await refreshSession(session.id);
-      if (updated && !updated.takes.some((tk) => tk.status === "processing")) {
+      if (updated && !updated.takes.some((tk) => isTakeInProgress(tk.status))) {
         stopPolling();
       }
     } catch (err: unknown) {
@@ -181,6 +201,18 @@ export function useVoiceSession(accessToken: string | null): VoiceSessionHook {
     }
   }, [accessToken, session, refreshSession, stopPolling]);
 
+  const reopen = useCallback(async () => {
+    if (!accessToken || !session) return;
+    setError(null);
+    try {
+      const updated = await reopenVoiceSession(accessToken, session.id);
+      setSession(updated);
+      setResult(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al reabrir la sesión");
+    }
+  }, [accessToken, session]);
+
   const reset = useCallback(() => {
     stopPolling();
     setSession(null);
@@ -203,6 +235,7 @@ export function useVoiceSession(accessToken: string | null): VoiceSessionHook {
     addTake,
     removeTake,
     analyze,
+    reopen,
     reset,
   };
 }

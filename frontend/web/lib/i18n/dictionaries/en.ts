@@ -194,6 +194,8 @@ const en = {
     sessionInsufficientTakes: "At least 2 processed takes are required to analyze.",
     sessionError: "Session error. Please try again.",
     sessionReset: "New session",
+    sessionFailedHint: "Session analysis failed. You can reopen it to adjust the takes and retry.",
+    sessionReopen: "Reopen session",
     sessionAuthRequired: "Sign in is required to use multi-take analysis.",
   },
   settings: {
