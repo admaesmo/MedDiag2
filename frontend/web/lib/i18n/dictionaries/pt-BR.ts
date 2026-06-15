@@ -77,6 +77,7 @@ const ptBR = {
     title: "Métricas de Áudio Parkinson",
     subtitle: "Análise biomédica de voz em tempo real com feedback tonal e estados seguros.",
     historyReplayNote: "Resultado reconstruído a partir dos biomarcadores salvos deste teste.",
+    analysisFailed: "Falha ao analisar o áudio",
     recordingGuideEyebrow: "Guia de gravação",
     recordingGuideTitle: "Como gravar a vogal /a/",
     recordingGuideSubtitle: "Siga estes passos para capturar uma amostra limpa e estável. Esta tomada afeta diretamente a qualidade dos features.",

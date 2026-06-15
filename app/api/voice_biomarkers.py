@@ -52,6 +52,21 @@ async def extract_voice_biomarkers_endpoint(file: UploadFile = File(...)):
             audio_bytes=audio_bytes,
             source_name=file.filename,
         )
+
+        # --- COMPUERTA QA/QC antes del pre-análisis ---
+        # Un audio que no cumple los requisitos no debe generar pre-análisis ni inferencia.
+        import soundfile as sf
+        from app.services.quality_control import analizar_signal
+
+        waveform, wav_sr = sf.read(prepared_audio.temp_wav_path)
+        qc = analizar_signal(waveform, wav_sr)
+        if not qc.is_valid:
+            reason = qc.rejection_reason or "El audio no superó el control de calidad."
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Control de calidad rechazado: {reason}",
+            )
+
         biomarkers = extract_voice_biomarkers(prepared_audio)
         bridge = build_parkinson_model_bridge(biomarkers)
         model_features = extract_parkinson_model_features(prepared_audio)
@@ -72,6 +87,8 @@ async def extract_voice_biomarkers_endpoint(file: UploadFile = File(...)):
             parkinson_model_input=ParkinsonModelInputResponse(**model_input),
             parkinson_inference=ParkinsonInferenceResponse(**inference),
         )
+    except HTTPException:
+        raise
     except VoiceBiomarkerError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except Exception as exc:

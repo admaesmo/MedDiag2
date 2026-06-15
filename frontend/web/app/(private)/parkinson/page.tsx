@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Mic, Play, Upload } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Mic, Play, Upload } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/atoms/button";
 import { Card } from "@/components/atoms/card";
@@ -27,6 +27,36 @@ function formatElapsed(totalSeconds: number): string {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
+function Alert({
+  variant,
+  title,
+  detail,
+}: {
+  variant: "error" | "warning" | "success";
+  title: string;
+  detail?: string | null;
+}) {
+  const styles =
+    variant === "error"
+      ? "border-red-200 bg-red-50 text-red-800"
+      : variant === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-800"
+        : "border-emerald-200 bg-emerald-50 text-emerald-800";
+  const Icon = variant === "success" ? CheckCircle2 : AlertTriangle;
+  return (
+    <div
+      role={variant === "success" ? "status" : "alert"}
+      className={`mx-auto mt-3 flex w-full max-w-md items-start gap-3 rounded-xl border p-4 text-left ${styles}`}
+    >
+      <Icon className="mt-0.5 h-5 w-5 shrink-0" />
+      <div className="min-w-0">
+        <p className="text-sm font-semibold">{title}</p>
+        {detail ? <p className="mt-0.5 break-words text-xs opacity-90">{detail}</p> : null}
+      </div>
+    </div>
+  );
 }
 
 export default function ParkinsonPage() {
@@ -83,6 +113,8 @@ export default function ParkinsonPage() {
       (latestAudio.is_ready_for_inference ?? ["processed", "transcribed"].includes(latestAudio.status)),
   );
   const isAudioProcessing = latestAudio?.status === "processing";
+  const audioFailed = !mockApiEnabled && latestAudio?.status === "failed";
+  const audioFailureReason = latestAudio?.processing_error ?? null;
   const canRunInference = mockApiEnabled || (Boolean(accessToken) && isAudioReady && !isAudioProcessing);
   const elapsedLabel = formatElapsed(recording.elapsedSeconds);
 
@@ -918,7 +950,7 @@ export default function ParkinsonPage() {
             )}
           </div>
 
-          {!mockApiEnabled && latestAudio ? (
+          {!mockApiEnabled && latestAudio && !audioFailed ? (
             <p className="mt-2 text-xs text-muted-foreground" role="status" aria-live="polite">
               {isAudioProcessing
                 ? t(locale, "parkinson", "audioStillProcessing")
@@ -932,51 +964,55 @@ export default function ParkinsonPage() {
             {t(locale, "parkinson", "elapsed")}: <span className="font-headline text-lg text-foreground">{elapsedLabel}</span>
           </p>
 
-          <div aria-live="polite" className="mt-6 min-h-[28px] text-sm font-semibold text-primary">
-            {result ? (
-              <div>
-                <p>{`${t(locale, "parkinson", "confidenceLabel")}: ${result}`}</p>
-                {activePrediction?.message ? (
-                  <p className="mt-1 text-xs font-medium text-muted-foreground">
-                    {activePrediction.message}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-            {prediction.isError ? t(locale, "parkinson", "inferenceError") : null}
-          </div>
+          {/* Alerta de fallo al analizar el audio (oculta el resultado) */}
+          {audioFailed ? (
+            <Alert
+              variant="error"
+              title={t(locale, "parkinson", "analysisFailed")}
+              detail={audioFailureReason}
+            />
+          ) : null}
 
+          {/* Resultado de inferencia destacado (solo si el audio no falló) */}
+          {!audioFailed && result ? (
+            <div
+              className={`mx-auto mt-6 w-full max-w-md rounded-2xl border p-5 ${
+                activePrediction?.prediction === 1
+                  ? "border-red-200 bg-red-50"
+                  : "border-emerald-200 bg-emerald-50"
+              }`}
+              aria-live="polite"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                {t(locale, "parkinson", "confidenceLabel")}
+              </p>
+              <p
+                className={`mt-1 text-3xl font-bold ${
+                  activePrediction?.prediction === 1 ? "text-red-700" : "text-emerald-700"
+                }`}
+              >
+                {result}
+              </p>
+              {activePrediction?.message ? (
+                <p className="mt-2 text-sm font-medium text-foreground">{activePrediction.message}</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* Alertas de error consolidadas */}
           {recordingErrorMessage ? (
-            <p className="mt-3 text-sm font-semibold text-red-700" role="alert">
-              {recordingErrorMessage}
-            </p>
+            <Alert variant="error" title={recordingErrorMessage} />
           ) : null}
 
-          {biomarkerError ? (
-            <p className="mt-2 text-sm font-semibold text-red-700" role="alert">
-              {biomarkerError}
-            </p>
+          {biomarkerError ? <Alert variant="error" title={biomarkerError} /> : null}
+
+          {audioUploadError ? <Alert variant="error" title={audioUploadError} /> : null}
+
+          {prediction.isError && !audioFailed ? (
+            <Alert variant="error" title={t(locale, "parkinson", "inferenceError")} />
           ) : null}
 
-          {biomarkerMessage ? (
-            <p className="mt-2 text-sm font-semibold text-emerald-700" role="status">
-              {biomarkerMessage}
-            </p>
-          ) : null}
-
-          {audioUploadError ? (
-            <p className="mt-2 text-sm font-semibold text-red-700" role="alert">
-              {audioUploadError}
-            </p>
-          ) : null}
-
-          {audioUploadMessage ? (
-            <p className="mt-2 text-sm font-semibold text-emerald-700" role="status">
-              {audioUploadMessage}
-            </p>
-          ) : null}
-
-          {biomarkerResponse ? (
+          {!audioFailed && biomarkerResponse ? (
             <div className="mt-8 rounded-2xl border border-primary/10 bg-primary/5 p-5 text-left">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
