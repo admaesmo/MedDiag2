@@ -8,9 +8,9 @@ import { useForm } from "react-hook-form";
 import { Button } from "@/components/atoms/button";
 import { Input } from "@/components/atoms/input";
 import { loginSchema, type LoginValues } from "@/features/auth/schema";
-import { isLocalAuthEnabled, localAuthDefaults } from "@/lib/auth-mode";
+import { isLocalAuthEnabled } from "@/lib/auth-mode";
 import { setLocalSession } from "@/lib/local-auth";
-import { createClient } from "@/lib/supabase/client";
+import { loginUser } from "@/lib/api";
 import { useUiStore } from "@/stores/ui-store";
 import { t } from "@/lib/i18n";
 
@@ -24,8 +24,8 @@ export default function LoginPage() {
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: isLocalAuthEnabled ? localAuthDefaults.email : "",
-      password: isLocalAuthEnabled ? localAuthDefaults.password : "",
+      email: "",
+      password: "",
     },
   });
 
@@ -46,25 +46,22 @@ export default function LoginPage() {
     setIsLoading(true);
 
     if (isLocalAuthEnabled) {
-      if (
-        values.email !== localAuthDefaults.email ||
-        values.password !== localAuthDefaults.password
-      ) {
+      try {
+        const token = await loginUser(values.email, values.password);
+        setLocalSession(token.access_token, values.email);
         setIsLoading(false);
-        setError("Credenciales locales invalidas.");
+        router.replace(nextPath);
+        router.refresh();
+        return;
+      } catch (err) {
+        setIsLoading(false);
+        setError(err instanceof Error ? err.message : "Email o contraseña incorrectos.");
         return;
       }
-
-      // Generar un token simulado para desarrollo local
-      // El backend acepta tokens "dev_*" cuando AUTH_PROVIDER=local
-      const mockToken = "dev_" + btoa(JSON.stringify({ email: localAuthDefaults.email, role: localAuthDefaults.role, ts: Date.now() }));
-      setLocalSession(mockToken, localAuthDefaults.email);
-      setIsLoading(false);
-      router.replace(nextPath);
-      router.refresh();
-      return;
     }
 
+    // Supabase path (non-local mode)
+    const { createClient } = await import("@/lib/supabase/client");
     const supabase = createClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: values.email,
@@ -84,6 +81,7 @@ export default function LoginPage() {
 
   const onOAuth = async (provider: "google" | "github") => {
     setError(null);
+    const { createClient } = await import("@/lib/supabase/client");
     const supabase = createClient();
     const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
 
@@ -146,11 +144,7 @@ export default function LoginPage() {
         </Button>
       </form>
 
-      {isLocalAuthEnabled ? (
-        <p className="mt-4 text-sm text-muted-foreground">
-          Modo local activo. Usa <strong>{localAuthDefaults.email}</strong> / <strong>{localAuthDefaults.password}</strong>.
-        </p>
-      ) : (
+      {!isLocalAuthEnabled && (
         <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => onOAuth("google")} aria-label={t(locale, "auth", "oauthGoogle")}>
             {t(locale, "auth", "oauthGoogle")}

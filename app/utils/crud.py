@@ -1,5 +1,6 @@
+from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
-from app.models import User, Disease, Diagnosis, DiagnosisDetail
+from app.models import User, Disease, Diagnosis, DiagnosisDetail, AudioRecord
 from app.utils.validators import validate_probability
 
 
@@ -45,12 +46,18 @@ def create_diagnosis_with_single_candidate(
     disease_code: str,
     probability: float,
     final_description: str,
+    audio_record_id: int | None = None,
 ) -> Diagnosis:
     disease = db.query(Disease).filter(Disease.disease_code == disease_code).first()
     if not disease:
         raise ValueError(f"Disease with code {disease_code} not found")
 
-    diagnosis = Diagnosis(user_id=user_id, final_description=final_description, status="pending")
+    diagnosis = Diagnosis(
+        user_id=user_id,
+        final_description=final_description,
+        status="pending",
+        audio_record_id=audio_record_id,
+    )
     db.add(diagnosis)
     db.flush()
 
@@ -79,6 +86,49 @@ def get_recent_diagnoses(db: Session, limit: int = 50):
         .join(User, Diagnosis.user_id == User.id)
         .join(DiagnosisDetail, DiagnosisDetail.diagnosis_id == Diagnosis.id)
         .join(Disease, DiagnosisDetail.disease_id == Disease.id)
+        .order_by(Diagnosis.generated_at.desc())
+        .limit(limit)
+    )
+    return query.all()
+
+
+def get_diagnoses_by_user_id(db: Session, user_id: int, limit: int = 50):
+    # Subquery: max probability detail per diagnosis (avoids duplicate rows
+    # when a diagnosis has multiple DiagnosisDetail entries)
+    max_prob_sq = (
+        db.query(
+            DiagnosisDetail.diagnosis_id,
+            func.max(DiagnosisDetail.probability).label("max_prob"),
+        )
+        .group_by(DiagnosisDetail.diagnosis_id)
+        .subquery()
+    )
+    query = (
+        db.query(
+            Diagnosis.id,
+            Diagnosis.generated_at,
+            Diagnosis.status,
+            Diagnosis.final_description,
+            User.name.label("user_name"),
+            User.email.label("user_email"),
+            Disease.name.label("disease_name"),
+            Disease.disease_code,
+            DiagnosisDetail.probability,
+            AudioRecord.original_filename.label("audio_filename"),
+            Diagnosis.audio_record_id,
+        )
+        .join(User, Diagnosis.user_id == User.id)
+        .join(max_prob_sq, max_prob_sq.c.diagnosis_id == Diagnosis.id)
+        .join(
+            DiagnosisDetail,
+            and_(
+                DiagnosisDetail.diagnosis_id == Diagnosis.id,
+                DiagnosisDetail.probability == max_prob_sq.c.max_prob,
+            ),
+        )
+        .join(Disease, DiagnosisDetail.disease_id == Disease.id)
+        .outerjoin(AudioRecord, Diagnosis.audio_record_id == AudioRecord.id)
+        .filter(Diagnosis.user_id == user_id)
         .order_by(Diagnosis.generated_at.desc())
         .limit(limit)
     )

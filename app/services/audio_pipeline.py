@@ -196,6 +196,7 @@ def process_audio_pipeline(
     db: Session,
     audio_record_id: int,
     user_id: Optional[int] = None,
+    create_diagnosis: bool = True,
 ) -> Dict:
     """
     Ejecuta el pipeline completo para un registro de audio.
@@ -297,29 +298,37 @@ def process_audio_pipeline(
         )
 
         # --- INFERENCIA ---
-        diagnosis = create_parkinson_diagnosis(db, user_id, features, audio_record_id)
-        store_processing_result(db, audio_record_id, diagnosis.id)
-
-        logger.info("Pipeline completado correctamente para registro %d", audio_record_id)
-
-        return {
+        result: Dict = {
             "audio_record_id": audio_record_id,
             "status": "success",
             "features": features,
             "missing_features": missing_features,
-            "diagnosis_id": diagnosis.id,
-            "prediction": (
-                "positive"
-                if diagnosis.final_description and diagnosis.final_description.startswith("Posibles")
-                else "negative"
-            ),
-            "probability": float(next((d.probability for d in diagnosis.details), 0.0)),
-            "message": diagnosis.final_description,
             "feature_set_id": feature_set.id,
             "extractor_version": feature_set.extractor_version,
             "feature_schema_version": feature_set.feature_schema_version,
             "partial_features": feature_set.is_partial,
         }
+
+        if create_diagnosis:
+            diagnosis = create_parkinson_diagnosis(db, user_id, features, audio_record_id)
+            store_processing_result(db, audio_record_id, diagnosis.id)
+            result["diagnosis_id"] = diagnosis.id
+            result["prediction"] = (
+                "positive"
+                if diagnosis.final_description and diagnosis.final_description.startswith("Posibles")
+                else "negative"
+            )
+            result["probability"] = float(next((d.probability for d in diagnosis.details), 0.0))
+            result["message"] = diagnosis.final_description
+        else:
+            # Diagnóstico se crea aparte (vía /predict/parkinson); aquí sólo se
+            # extraen y persisten los biomarcadores. Marcar el audio como procesado.
+            audio_record.status = "processed"
+            audio_record.updated_at = datetime.now(timezone.utc)
+            db.commit()
+
+        logger.info("Pipeline completado correctamente para registro %d", audio_record_id)
+        return result
 
     except Exception as exc:
         logger.error("Pipeline fallido para registro %d: %s", audio_record_id, exc, exc_info=True)

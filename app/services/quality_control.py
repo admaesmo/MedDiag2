@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 DURACION_MINIMA_S = 0.8          # segundos
 MAX_RAZON_RECORTE = 0.01         # 1 % de muestras recortadas → rechazar
 RMS_MINIMO = 0.005               # por debajo → demasiado silencio / baja energía
-MAX_RAZON_SILENCIO = 0.60        # 60 % de tramas casi en cero → rechazar
+MAX_RAZON_SILENCIO = 0.60        # 60 % de tramas casi en cero → rechazar (las grabaciones de micrófono incluyen pausas)
 SNR_MINIMO_DB = 10.0             # menos de 10 dB → demasiado ruidoso
 UMBRAL_RECORTE = 0.98            # |muestra| >= umbral → candidato a recorte
 
@@ -157,10 +157,10 @@ def analizar_audio(audio_record: AudioRecord) -> QualityControlResult:
         razones.append(f"Energía RMS {rms:.5f} < mín {RMS_MINIMO}")
         puntuacion *= max(0.0, rms / RMS_MINIMO)
 
-    # Proporción de silencio
+    # Proporción de silencio (penalización suave; sólo rechazo si es casi todo silencio)
     if razon_silencio > MAX_RAZON_SILENCIO:
         razones.append(f"Silencio {razon_silencio:.3f} > máx {MAX_RAZON_SILENCIO}")
-        puntuacion *= 0.0  # rechazo duro
+        puntuacion *= 0.0  # rechazo duro: grabación prácticamente vacía
     else:
         puntuacion *= (1.0 - razon_silencio * 0.5)
 

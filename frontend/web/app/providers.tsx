@@ -1,7 +1,15 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
+import { useUiStore } from "@/stores/ui-store";
+
+function StoreHydration() {
+  useEffect(() => {
+    useUiStore.persist.rehydrate();
+  }, []);
+  return null;
+}
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -20,5 +28,10 @@ export function AppProviders({ children }: { children: ReactNode }) {
       }),
   );
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <StoreHydration />
+      {children}
+    </QueryClientProvider>
+  );
 }

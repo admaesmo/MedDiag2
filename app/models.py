@@ -88,6 +88,7 @@ class User(Base):
     display_name = Column(Text, nullable=True)
     email_verified = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
+    password_hash = Column(Text, nullable=True)          # bcrypt hash, only for local provider
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -288,6 +289,7 @@ class Diagnosis(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    audio_record_id = Column(Integer, ForeignKey("audio_records.id", ondelete="SET NULL"), nullable=True)
     generated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     status = Column(Text, nullable=False, server_default="pending")
     final_description = Column(Text)
@@ -297,6 +299,7 @@ class Diagnosis(Base):
     )
 
     user = relationship("User", back_populates="diagnoses")
+    audio_record = relationship("AudioRecord")
     details = relationship("DiagnosisDetail", back_populates="diagnosis", cascade="all, delete-orphan")
     symptoms = relationship("DiagnosisSymptom", back_populates="diagnosis", cascade="all, delete-orphan")
 
