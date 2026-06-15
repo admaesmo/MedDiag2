@@ -77,6 +77,7 @@ const en = {
     title: "Parkinson Audio Metrics",
     subtitle: "Real-time biomedical voice analysis with tonal feedback and safe states.",
     historyReplayNote: "Result reconstructed from the saved biomarkers of this test.",
+    analysisFailed: "Audio analysis failed",
     recordingGuideEyebrow: "Recording guide",
     recordingGuideTitle: "How to record the /a/ vowel",
     recordingGuideSubtitle: "Follow these steps to capture a clean, stable sample. This take directly affects feature quality.",
