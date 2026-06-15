@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from app.utils.database import SessionLocal, Base, engine
 from app.utils import crud
@@ -73,7 +73,19 @@ class ManualCORSMiddleware(BaseHTTPMiddleware):
                 response.headers["Access-Control-Allow-Credentials"] = "true"
             return response
 
-        response: Response = await call_next(request)
+        # BaseHTTPMiddleware NO ejecuta el resto del dispatch si call_next lanza
+        # una excepción no controlada (500): Starlette responde con un 500 plano
+        # SIN cabeceras CORS, y el navegador lo reporta como "CORS missing".
+        # Capturamos la excepción aquí para devolver un 500 CON cabeceras CORS.
+        try:
+            response: Response = await call_next(request)
+        except Exception as exc:  # noqa: BLE001
+            import traceback
+            traceback.print_exc()  # queda en los logs de Render
+            response = JSONResponse(
+                status_code=500,
+                content={"detail": "Internal Server Error", "error": str(exc)},
+            )
 
         # Agregar cabeceras CORS a TODAS las respuestas (incluso errores)
         response.headers["Access-Control-Allow-Origin"] = allow_origin
