@@ -11,6 +11,8 @@ from starlette.responses import JSONResponse, Response
 from app.utils.database import SessionLocal, Base, engine
 from app.utils import crud
 from app.model_predict import (
+    PARKINSON_NEGATIVE_MESSAGE,
+    PARKINSON_POSITIVE_MESSAGE,
     DIABETES_FEATURE_ORDER,
     HEART_FEATURE_ORDER,
     PARK_FEATURE_ORDER,
@@ -304,7 +306,7 @@ def predict_parkinson_endpoint(payload: ParkinsonRequest, db: Session = Depends(
         ordered_features=PARK_FEATURE_ORDER,
         disease_code="PARK",
         predictor=predict_parkinson,
-        positive_msg="La persona puede tener Parkinson, consulte a su médico.",
-        negative_msg="La persona no tiene Parkinson.",
+        positive_msg=PARKINSON_POSITIVE_MESSAGE,
+        negative_msg=PARKINSON_NEGATIVE_MESSAGE,
         audio_record_id=payload.audio_record_id,
     )

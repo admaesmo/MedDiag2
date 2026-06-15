@@ -20,6 +20,7 @@ from parselmouth.praat import call
 
 from app.model_predict import (
     PARK_FEATURE_ORDER,
+    get_parkinson_verdict,
     predict_parkinson,
 )
 from app.services.audio_processing import AudioProcessingError, extract_features_from_audio
@@ -30,9 +31,7 @@ TARGET_CHANNELS = 1
 TARGET_WAV_FORMAT = "wav"
 DEFAULT_PITCH_FLOOR_HZ = 75.0
 DEFAULT_PITCH_CEILING_HZ = 300.0
-PARKINSON_MODEL_FILENAME = "parkinsons_model.sav"
-PARKINSON_POSITIVE_MESSAGE = "La persona puede tener Parkinson, consulte a su médico."
-PARKINSON_NEGATIVE_MESSAGE = "La persona no tiene Parkinson."
+PARKINSON_MODEL_FILENAME = "parkinsons_model_smote.sav"
 
 
 class VoiceBiomarkerError(Exception):
@@ -242,11 +241,13 @@ def run_parkinson_direct_inference(features: Dict[str, float]) -> Dict[str, obje
     except Exception as exc:
         raise VoiceBiomarkerError(f"No se pudo ejecutar la inferencia de Parkinson: {exc}") from exc
 
+    _, message = get_parkinson_verdict(probability)
+
     return {
         "model_name": PARKINSON_MODEL_FILENAME,
         "disease_code": "PARK",
         "prediction": int(prediction),
         "probability": float(probability),
-        "message": PARKINSON_POSITIVE_MESSAGE if prediction == 1 else PARKINSON_NEGATIVE_MESSAGE,
+        "message": message,
     }
 

@@ -4,6 +4,9 @@ const isProduction = typeof window !== "undefined" && window.location.hostname !
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || (isProduction ? "https://meddiag-api-h0cm.onrender.com" : "http://localhost:8000");
 const mockFlag = (process.env.NEXT_PUBLIC_USE_MOCK_API || "").trim().toLowerCase();
 const useMockApi = mockFlag === "true" || mockFlag === "1" || mockFlag === "yes" || mockFlag === "on";
+const PARKINSON_CONFIDENCE_THRESHOLD = 0.7;
+const PARKINSON_POSITIVE_MESSAGE = "Veredicto: positivo para Parkinson. Confianza igual o superior al 70%. Consulte a su médico.";
+const PARKINSON_NEGATIVE_MESSAGE = "Veredicto: no tiene Parkinson. Confianza inferior al 70%.";
 
 export function isMockApiEnabled(): boolean {
   return useMockApi;
@@ -412,7 +415,7 @@ export async function extractVoiceBiomarkersMultipart(
         hnr_mean: hnrMean,
       },
       parkinson_model_bridge: {
-        model_name: "parkinsons_model.sav",
+        model_name: "parkinsons_model_smote.sav",
         mapped_features: {
           "MDVP:Fo(Hz)": pitchMean,
           "MDVP:Fhi(Hz)": pitchMax,
@@ -443,7 +446,7 @@ export async function extractVoiceBiomarkersMultipart(
         note: "This partial bridge maps only the requested Parselmouth biomarkers.",
       },
       parkinson_model_input: {
-        model_name: "parkinsons_model.sav",
+        model_name: "parkinsons_model_smote.sav",
         features: fullFeatureVector,
         feature_count: 22,
         required_feature_count: 22,
@@ -453,12 +456,12 @@ export async function extractVoiceBiomarkersMultipart(
       parkinson_inference: {
         model_name: "parkinsons_model.sav",
         disease_code: "PARK",
-        prediction: probability >= 0.5 ? 1 : 0,
+        prediction: probability >= PARKINSON_CONFIDENCE_THRESHOLD ? 1 : 0,
         probability,
         message:
-          probability >= 0.5
-            ? "La persona puede tener Parkinson, consulte a su médico."
-            : "La persona no tiene Parkinson.",
+          probability >= PARKINSON_CONFIDENCE_THRESHOLD
+            ? PARKINSON_POSITIVE_MESSAGE
+            : PARKINSON_NEGATIVE_MESSAGE,
       },
     };
   }
@@ -506,12 +509,12 @@ export async function predictParkinson(
     const probability = 0.12 + Math.random() * 0.15;
     return {
       disease_code: "PARK",
-      prediction: probability >= 0.5 ? 1 : 0,
+      prediction: probability >= PARKINSON_CONFIDENCE_THRESHOLD ? 1 : 0,
       probability,
       message:
-        probability >= 0.5
-          ? "Possible Parkinson pattern detected. Specialist review suggested."
-          : "No strong Parkinson pattern detected.",
+        probability >= PARKINSON_CONFIDENCE_THRESHOLD
+          ? PARKINSON_POSITIVE_MESSAGE
+          : PARKINSON_NEGATIVE_MESSAGE,
     };
   }
 
@@ -596,11 +599,11 @@ export async function processAudio(
         "HNR": 20 + Math.random() * 5,
       },
       diagnosis_id: Math.round(Math.random() * 1000),
-      prediction: probability >= 0.5 ? "positive" : "negative",
+      prediction: probability >= PARKINSON_CONFIDENCE_THRESHOLD ? "positive" : "negative",
       probability,
-      message: probability >= 0.5 
-        ? "Possible Parkinson's detected with moderate confidence." 
-        : "No significant Parkinson's indicators detected.",
+      message: probability >= PARKINSON_CONFIDENCE_THRESHOLD
+        ? PARKINSON_POSITIVE_MESSAGE
+        : PARKINSON_NEGATIVE_MESSAGE,
     };
   }
 

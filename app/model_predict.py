@@ -21,6 +21,7 @@ from typing import Dict, List, Tuple
 
 import joblib
 import numpy as np
+import pandas as pd
 from dotenv import load_dotenv
 
 from app.services.constants import PARKINSON_FEATURE_ORDER
@@ -89,7 +90,15 @@ heart_model = _load_model("heart_disease_model.sav")
 # Modelo de Parkinson — XGBoost entrenado con SMOTE (balanceo de clases)
 # ---------------------------------------------------------------------------
 
-PARKINSON_THRESHOLD = 0.85  # umbral ajustado: mejor balance sensibilidad/especificidad para audio real
+PARKINSON_CONFIDENCE_THRESHOLD = 0.70
+PARKINSON_THRESHOLD = PARKINSON_CONFIDENCE_THRESHOLD
+PARKINSON_POSITIVE_MESSAGE = (
+    "Veredicto: positivo para Parkinson. Confianza igual o superior al 70%. "
+    "Consulte a su médico."
+)
+PARKINSON_NEGATIVE_MESSAGE = (
+    "Veredicto: no tiene Parkinson. Confianza inferior al 70%."
+)
 
 
 
@@ -128,10 +137,14 @@ def _predict_binary(
     Si se proporciona un ``scaler``, las features se estandarizan antes
     de pasar al modelo.
     """
-    x = np.array([[float(features[f]) for f in ordered_features]])
-
     if scaler is not None:
+        x = pd.DataFrame(
+            [[float(features[f]) for f in ordered_features]],
+            columns=ordered_features,
+        )
         x = scaler.transform(x)
+    else:
+        x = np.array([[float(features[f]) for f in ordered_features]])
 
     label = int(model.predict(x)[0])
 
@@ -171,7 +184,7 @@ def predict_parkinson(
     features : Dict[str, float]
         Las 22 características del dataset UCI Oxford.
     threshold : float, optional
-        Umbral de probabilidad para clasificación (default 0.55).
+        Umbral de probabilidad para clasificación (default 0.70).
 
     Returns
     -------
@@ -181,8 +194,20 @@ def predict_parkinson(
     if parkinsons_model is None or parkinsons_scaler is None:
         raise RuntimeError("Modelo de Parkinson no disponible.")
 
-    x = np.array([[float(features[f]) for f in PARKINSON_FEATURE_ORDER]])
+    x = pd.DataFrame(
+        [[float(features[f]) for f in PARKINSON_FEATURE_ORDER]],
+        columns=PARKINSON_FEATURE_ORDER,
+    )
     x = parkinsons_scaler.transform(x)
     proba = float(parkinsons_model.predict_proba(x)[0][1])
     label = 1 if proba >= threshold else 0
     return label, proba
+
+
+def get_parkinson_verdict(
+    probability: float,
+    threshold: float = PARKINSON_THRESHOLD,
+) -> Tuple[int, str]:
+    prediction = 1 if probability >= threshold else 0
+    message = PARKINSON_POSITIVE_MESSAGE if prediction == 1 else PARKINSON_NEGATIVE_MESSAGE
+    return prediction, message
