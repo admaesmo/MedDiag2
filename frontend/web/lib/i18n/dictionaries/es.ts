@@ -77,6 +77,7 @@ const es = {
     title: "Métricas de Audio Parkinson",
     subtitle: "Análisis biomédico de voz en tiempo real con retroalimentación tonal y estados seguros.",
     historyReplayNote: "Resultado reconstruido a partir de los biomarcadores guardados de esta prueba.",
+    analysisFailed: "Fallo al analizar el audio",
     recordingGuideEyebrow: "Guía de grabación",
     recordingGuideTitle: "Cómo grabar la vocal /a/",
     recordingGuideSubtitle: "Sigue estos pasos para capturar una muestra limpia y estable. La calidad de esta toma afecta directamente los features.",

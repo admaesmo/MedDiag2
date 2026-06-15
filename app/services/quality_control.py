@@ -108,6 +108,16 @@ def analizar_audio(audio_record: AudioRecord) -> QualityControlResult:
       5. Combinación en un veredicto de aprobación/rechazo con puntuación
     """
     y, sr = _cargar_audio_desde_registro(audio_record)
+    return analizar_signal(y, sr)
+
+
+def analizar_signal(y: np.ndarray, sr: int) -> QualityControlResult:
+    """
+    Ejecuta los controles de calidad directamente sobre una señal decodificada.
+
+    Permite reutilizar la compuerta de QA/QC sin un AudioRecord persistido
+    (por ejemplo, durante la extracción de biomarcadores previa al pre-análisis).
+    """
     duracion_s = float(len(y)) / sr
 
     # --- Métricas básicas ---
