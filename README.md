@@ -9,13 +9,15 @@
 
 ## Descripción General
 
-**MedDiag2** es una plataforma web de **tamizaje experimental** de la enfermedad de Parkinson mediante análisis de voz. El sistema permite a los usuarios grabar o subir una muestra de voz sostenida, extraer automáticamente **22 biomarcadores acústicos** (F0, jitter, shimmer, HNR, NHR, y parámetros no lineales como DFA, D2, RPDE, PPE), y obtener una **predicción preliminar basada en machine learning**.
+**MedDiag2** es una plataforma web de **tamizaje experimental** de la enfermedad de Parkinson mediante análisis de voz. El sistema permite a los usuarios grabar múltiples tomas de voz sostenida, extraer automáticamente **22 biomarcadores acústicos** (F0, jitter, shimmer, HNR, NHR, y parámetros no lineales como DFA, D2, RPDE, PPE), agregarlos por mediana entre tomas, y obtener una **predicción preliminar basada en machine learning**.
 
 El proyecto integra:
-- **Frontend** en Next.js con interfaz para grabación/carga de audio, historial y visualización de resultados.
+- **Frontend** en Next.js con interfaz de flujo multi-toma para Parkinson, historial y visualización de resultados.
 - **Backend** en FastAPI con pipeline completo de procesamiento de señales.
 - **Pipeline de audio** con extracción de biomarcadores, control de calidad y trazabilidad mediante Feature Store versionado.
-- **Modelos ML** serializados para inferencia (Parkinson, y compatibilidad histórica con diabetes y enfermedad cardiovascular).
+- **Modelos ML** serializados para inferencia (Parkinson con modelo "classic16", y compatibilidad histórica con diabetes y enfermedad cardiovascular).
+
+> 📚 **Proyecto integrador** — Facultad de Ingeniería, Departamento de Ingeniería de Sistemas, Universidad de Antioquia. Medellín, Colombia.
 
 > ⚠️ **Importante:** MedDiag2 es una **herramienta académica experimental de apoyo**, no un sistema de diagnóstico clínico. No reemplaza la evaluación de un profesional de la salud.
 
@@ -45,15 +47,15 @@ El proyecto integra:
 | Componente | Estado | Detalle |
 |-----------|--------|---------|
 | Pipeline de audio | ✅ Funcional | Carga, decodificación, extracción de 22 biomarcadores |
-| Biomarcadores no lineales | ✅ Implementados | DFA, D2, PPE, RPDE, spread1, spread2 |
+| Biomarcadores no lineales | ✅ Implementados | DFA (vectorizado), D2, PPE, RPDE, spread1, spread2 — extraídos y persistidos, **excluidos del modelo** |
 | Feature Store | ✅ Implementado | Versionado con `extractor_version` y `feature_schema_version` |
-| Inferencia | ✅ Funcional | Predicción preliminar con probabilidad |
-| Control de calidad de audio | ✅ Implementado | Servicio `quality_control.py` activo en el pipeline |
+| Inferencia | ✅ Funcional | Predicción con modelo "classic16" (16 features clásicas, umbral 0.40) |
+| Control de calidad de audio | ✅ Implementado | Servicio `quality_control.py` activo; RPDE/DFA removidos de features críticas |
 | Preprocesamiento DSP | ✅ Implementado | Cascada HP 70 Hz → LP 5 kHz → VAD trim → normalización RMS adaptativa |
-| Análisis de múltiples tomas | ✅ Implementado | Sesiones de 2-5 tomas con agregación por mediana y `session_confidence` |
-| Frontend (grabación/carga) | ✅ Funcional | Interfaz de usuario con autenticación |
+| Análisis de múltiples tomas | ✅ Implementado | Flujo obligatorio de 2-5 tomas con agregación por mediana y `session_confidence` |
+| Frontend Parkinson | ✅ Funcional | Simplificado a flujo multi-toma exclusivo; autenticación y historial |
 | Parselmouth como extractor base | ✅ Implementado | Endpoint `/audio/biomarkers/extract` con Parselmouth |
-| Validación clínica | ❌ Pendiente | Sin evaluación con pacientes reales |
+| Validación clínica | ❌ Pendiente | Sin evaluación con pacientes reales; N=81, confound de edad no corregido |
 
 ---
 
@@ -189,35 +191,44 @@ La extracción usa una estrategia híbrida:
 - **Implementaciones determinísticas propias** para biomarcadores no lineales
 - **Aproximación cepstral** para NHR/HNR
 
+> **Nota sobre biomarcadores no lineales:** Las 6 features no lineales (RPDE, DFA, spread1, spread2, D2, PPE) se extraen y persisten en el Feature Store, pero **no alimentan al modelo de inferencia actual**. En audios reales (grabación de celular/web), estas features quedan clampeadas al límite del rango UCI en un 74-100% de los casos, lo que provocaba falsos positivos casi sistemáticos con el modelo anterior. El modelo activo ("classic16") usa solo las 16 features clásicas (F0, jitter, shimmer, HNR/NHR). Ver sección [Modelos ML](#modelos-ml).
+
 ---
 
 ## Modelos ML
 
-### Modelo principal: Parkinson (XGBoost con SMOTE)
+### Modelo principal: Parkinson "classic16"
 
-El modelo activo de Parkinson fue sometido a un proceso de **optimización y reentrenamiento** documentado en el notebook [`notebooks/MedDiag_Parkinson_SMOTE_Colab.ipynb`](./notebooks/MedDiag_Parkinson_SMOTE_Colab.ipynb). Este proceso incluyó:
+El modelo activo de Parkinson es **"classic16"**, reentrenado en junio 2026 para corregir el problema de falsos positivos sistemáticos del modelo anterior (ver historial de cambios más abajo).
 
-1. **Balanceo de clases con SMOTE** — El dataset original (197 muestras, 31 personas) presenta desbalance entre clases. Se aplicó SMOTE (*Synthetic Minority Oversampling Technique*) para generar muestras sintéticas de la clase minoritaria, equilibrando la distribución y mejorando la sensibilidad del modelo.
+**Problema diagnosticado con el modelo anterior (SMOTE):**  
+El modelo `parkinsons_model_smote.sav` usaba las 22 features del dataset Oxford, incluyendo las 6 no lineales (RPDE, DFA, spread1, spread2, D2, PPE). En audio real (grabación desde celular o web), estas features quedan clampeadas al límite del rango UCI en el **74-100% de los registros**, haciendo que el modelo predijera positivo casi siempre (accuracy ~42% en dataset externo). Ver [`app/services/constants.py`](./app/services/constants.py) y [`app/services/feature_validator.py`](./app/services/feature_validator.py).
 
-2. **Optimización de hiperparámetros con GridSearchCV** — Se realizó una búsqueda sistemática sobre los parámetros clave de XGBoost: `n_estimators`, `max_depth`, `learning_rate`, `subsample`, `colsample_bytree` y `reg_lambda`, utilizando validación cruzada estratificada (5 folds) y optimizando sobre F1-score.
+**Solución — modelo "classic16":**
+1. **Subconjunto de features** — El modelo usa solo las **16 features clásicas** (F0, jitter, shimmer, HNR, NHR), excluyendo las 6 no lineales que no transfieren a audio real de campo. Las no lineales siguen extrayéndose y persistiéndose en el Feature Store para análisis y trazabilidad, pero no entran al modelo.
 
-3. **Ajuste del umbral de decisión** — Se evaluaron umbrales de probabilidad entre 0.3 y 0.7 para maximizar el balance entre sensibilidad y especificidad. El umbral óptimo se fijó en **0.55**, reduciendo falsos positivos sin sacrificar significativamente la detección de verdaderos positivos.
+2. **Nuevo dataset de entrenamiento con audio real** — Se incorporó el dataset figshare [`DOI 10.6084/m9.figshare.23849127`](https://doi.org/10.6084/m9.figshare.23849127) (81 sujetos, PD/HC, grabación telefónica a 8 kHz, CC-BY), ya que el dataset Oxford (laboratorio) no transfiere a audio real (AUC fuera de dominio ~0.41-0.51).
 
-4. **Métricas finales del modelo optimizado:**
-   - **Accuracy:** ~94.9%
-   - **AUC-ROC:** ~0.98
-   - **Sensibilidad (Recall):** ~96%
-   - **Especificidad:** ~93%
-   - **F1-score:** ~0.95
+3. **Script de reentrenamiento:** [`scripts/retrain_parkinson_classic16.py`](./scripts/retrain_parkinson_classic16.py)
 
-- **Archivo activo:** `saved_models/parkinsons_model_smote.sav` (XGBoost entrenado con SMOTE — versión mejorada)
-- **Archivo activo:** `saved_models/parkinsons_scaler_smote.sav` (StandardScaler para modelo SMOTE)
-- **Archivos anteriores (reemplazados):**
-  - `saved_models/parkinsons_model.sav` — Modelo XGBoost sin SMOTE (reemplazado por versión SMOTE)
-  - `saved_models/parkinsons_scaler.sav` — Scaler anterior (reemplazado por versión SMOTE)
-- **Dataset:** Oxford Parkinson's Disease Detection Dataset (UCI)
-- **Entrada:** Vector de 22 biomarcadores de voz
-- **Salida:** Clasificación binaria + probabilidad (umbral 0.55)
+4. **Métricas (preliminares, N=81, out-of-fold):**
+   - **AUC-ROC:** ~0.64
+   - **Umbral de decisión:** 0.40
+
+5. **Limitaciones conocidas del modelo actual:**
+   - N=81, resultado preliminar, no validado clínicamente
+   - Confound de edad no corregido (PD ~67a vs HC ~48a en el dataset)
+   - AUC modesto — el tamizaje tiene valor orientativo, no diagnóstico
+
+- **Archivo activo:** `saved_models/parkinsons_model_classic16.sav`
+- **Archivo activo:** `saved_models/parkinsons_scaler_classic16.sav` (StandardScaler para classic16)
+- **Archivos anteriores (deprecados):**
+  - `saved_models/parkinsons_model_smote.sav` — Modelo con 22 features; producía falsos positivos en audio real
+  - `saved_models/parkinsons_scaler_smote.sav` — Scaler para el modelo SMOTE
+  - `saved_models/parkinsons_model.sav` — Modelo XGBoost sin SMOTE
+  - `saved_models/parkinsons_scaler.sav` — Scaler original
+- **Entrada:** Vector de 16 biomarcadores clásicos de voz (F0, jitter, shimmer, HNR, NHR)
+- **Salida:** Clasificación binaria + probabilidad (umbral 0.40)
 
 ### Modelos históricos (compatibilidad)
 - **Diabetes Tipo 2** — `saved_models/diabetes_model.sav` — 8 variables clínicas
@@ -233,25 +244,28 @@ El modelo activo de Parkinson fue sometido a un proceso de **optimización y ree
 
 | Archivo | Propósito |
 |---------|-----------|
-| `app/model_predict.py` | Carga y ejecución de modelos ML en producción |
+| `app/model_predict.py` | Carga y ejecución de modelos ML; inferencia con modelo classic16 (16 features, umbral 0.40) |
+| `app/services/constants.py` | `PARKINSON_FEATURE_ORDER` (22 features, para extracción) y `PARKINSON_MODEL_FEATURE_ORDER` (16 features, para inferencia) |
+| `app/services/feature_validator.py` | Validación de features extraídas vs rangos UCI; RPDE/DFA excluidos de features críticas |
 | `app/services/audio_processing.py` | Extracción de biomarcadores acústicos (pipeline principal) |
 | `app/services/audio_filters.py` | Preprocesamiento DSP: HP 70 Hz, LP 5 kHz, VAD trim, normalización RMS sin clipping |
 | `app/services/audio_pipeline.py` | Orquestación del pipeline completo de audio (toma única) |
 | `app/services/session_pipeline.py` | Agregación multi-toma: mediana por biomarcador, CV inter-toma, `session_confidence` |
-| `app/services/nonlinear_features.py` | Cálculo de biomarcadores no lineales (DFA, D2, RPDE, PPE, spread1, spread2) |
+| `app/services/nonlinear_features.py` | Cálculo de biomarcadores no lineales (DFA vectorizado, D2, RPDE, PPE, spread1, spread2); output persistido pero excluido del modelo |
 | `app/services/voice_biomarkers.py` | Extracción de biomarcadores vía Parselmouth (endpoint directo) |
 | `app/services/quality_control.py` | Control de calidad de audio (QA/QC) |
 | `app/api/voice_biomarkers.py` | Endpoint REST para extracción directa de biomarcadores |
 | `app/api/audio.py` | Endpoints REST de carga y procesamiento de audio (toma única) |
-| `app/api/sessions.py` | Endpoints REST de sesiones multi-toma (`/sessions`) |
+| `app/api/sessions.py` | Endpoints REST de sesiones multi-toma (`/sessions`); polling con margen de 240s |
 | `app/models.py` | Modelos SQLAlchemy (incluye `VoiceSession`, `BiomarkerFeature`, `AudioQualityReport`) |
 | `app/schemas/voice_biomarkers.py` | Schemas Pydantic para biomarcadores de voz |
 | `app/schemas/quality_control.py` | Schemas Pydantic para control de calidad |
 | `app/schemas/sessions.py` | Schemas Pydantic para sesiones multi-toma |
 | `alembic/versions/005_voice_sessions.py` | Migración: tabla `voice_sessions` + columnas `session_id`, `take_number` |
-| `saved_models/parkinsons_model_smote.sav` | Modelo XGBoost entrenado con SMOTE (producción activa) |
-| `saved_models/parkinsons_scaler_smote.sav` | Scaler para el modelo SMOTE |
-| `notebooks/MedDiag_Parkinson_SMOTE_Colab.ipynb` | Notebook de entrenamiento y optimización con SMOTE |
+| `saved_models/parkinsons_model_classic16.sav` | Modelo "classic16" (16 features clásicas, entrenado con audio real figshare) |
+| `saved_models/parkinsons_scaler_classic16.sav` | StandardScaler para el modelo classic16 |
+| `scripts/retrain_parkinson_classic16.py` | Script de reentrenamiento del modelo classic16 con dataset figshare |
+| `notebooks/MedDiag_Parkinson_SMOTE_Colab.ipynb` | Notebook del modelo SMOTE anterior (referencia histórica; modelo ya reemplazado) |
 
 ### Deprecados (⛔ mantenidos solo por referencia histórica)
 
@@ -259,8 +273,10 @@ El modelo activo de Parkinson fue sometido a un proceso de **optimización y ree
 |---------|----------------------|
 | `Parkinsons_Caro(1).ipynb` | Notebook original de entrenamiento (Diana Huertas). Reemplazado por `Parkinsons_Model_Training_REAL_FIXED.ipynb` |
 | `EXPERIMENTOS_EXTRACCION_BIOMARCADORES_VOZ_PARKINSON_COLAB.ipynb` | Notebook experimental de extracción de biomarcadores. La funcionalidad fue integrada directamente en los servicios del backend |
-| `saved_models/parkinsons_model.sav` | Modelo XGBoost sin SMOTE (reemplazado por `parkinsons_model_smote.sav`) |
-| `saved_models/parkinsons_scaler.sav` | Scaler anterior (reemplazado por `parkinsons_scaler_smote.sav`) |
+| `saved_models/parkinsons_model_smote.sav` | Modelo con 22 features (incluye no lineales); producía falsos positivos en audio real — reemplazado por classic16 |
+| `saved_models/parkinsons_scaler_smote.sav` | Scaler para el modelo SMOTE (reemplazado por scaler classic16) |
+| `saved_models/parkinsons_model.sav` | Modelo XGBoost sin SMOTE (reemplazado por classic16) |
+| `saved_models/parkinsons_scaler.sav` | Scaler original (reemplazado por scaler classic16) |
 | `saved_models/parkinsons_model_xgboost.sav` | Modelo XGBoost individual generado durante experimentación. No es cargado por `model_predict.py` |
 | `saved_models/parkinsons_model_ensemble.sav` | Ensemble de modelos generado durante experimentación. No es cargado por `model_predict.py` |
 
@@ -418,12 +434,14 @@ MedDiag2/
 ## Limitaciones
 
 1. **No es diagnóstico clínico** — Solo entrega una proyección preliminar experimental.
-2. **Dataset limitado** — Modelo basado en dataset público pequeño (197 muestras, 31 personas).
-3. **Sensibilidad al audio** — Ruido, micrófono, distancia e intensidad afectan los biomarcadores.
-4. **Aproximaciones algorítmicas** — Varias medidas son aproximaciones propias, no equivalentes exactos de MDVP o Praat.
-5. **Valores `0.0` como placeholder** — Cuando una feature no puede calcularse, se usa `0.0` por compatibilidad. Esto debe reemplazarse por una política formal de features parciales.
-6. **Sin validación clínica** — No se ha evaluado con pacientes reales ni profesionales médicos.
-7. **Riesgo de sobreinterpretación** — Una probabilidad puede malentenderse sin el contexto y advertencias adecuadas.
+2. **Dataset limitado** — El modelo classic16 se entrenó con N=81 (dataset figshare, audio real). El dataset Oxford original (197 muestras, laboratorio) no transfiere a audio de campo.
+3. **Confound de edad no corregido** — En el dataset figshare, los sujetos PD tienen ~67 años en promedio vs ~48 años para HC. El modelo puede estar capturando efectos de edad además de Parkinson.
+4. **AUC modesto** — AUC out-of-fold ~0.64; el tamizaje tiene valor orientativo solamente.
+5. **Features no lineales fuera del modelo** — RPDE, DFA, spread1, spread2, D2 y PPE se extraen y persisten, pero no alimentan la inferencia porque quedan clampeadas al límite UCI en el 74-100% de grabaciones reales de celular/web. Esta discrepancia de dominio (laboratorio vs campo) aún no está resuelta.
+6. **Sensibilidad al audio** — Ruido, micrófono, distancia e intensidad afectan los biomarcadores, especialmente los no lineales.
+7. **Aproximaciones algorítmicas** — Varias medidas son aproximaciones propias, no equivalentes exactos de MDVP o Praat.
+8. **Sin validación clínica** — No se ha evaluado con pacientes reales ni profesionales médicos.
+9. **Riesgo de sobreinterpretación** — Una probabilidad puede malentenderse sin el contexto y advertencias adecuadas.
 
 ---
 
@@ -431,13 +449,17 @@ MedDiag2/
 
 - [x] Implementar preprocesamiento DSP (HP/LP/VAD/normalización) — `audio_filters.py`
 - [x] Implementar análisis de múltiples tomas con agregación robusta — `session_pipeline.py`
+- [x] Integrar flujo multi-toma en el frontend (interfaz obligatoria de N tomas)
+- [x] Diagnosticar y corregir falsos positivos sistemáticos por features no lineales clampeadas
+- [x] Reentrenar modelo con audio real (dataset figshare, 81 sujetos) — modelo "classic16"
+- [x] Vectorizar `compute_dfa` para eliminar timeout de procesamiento en producción (Render)
+- [ ] Corregir confound de edad en el dataset de entrenamiento (PD ~67a vs HC ~48a)
+- [ ] Ampliar dataset de entrenamiento con audio real para superar N=81
+- [ ] Resolver brecha de dominio para features no lineales: validar si con audio de alta calidad salen del clamp UCI, o buscar re-escalado adecuado
 - [ ] Congelar extractor clásico con Parselmouth/Praat para F0, jitter, shimmer y HNR
-- [ ] Reemplazar uso de `0.0` por política `partial_features` o `missing_features`
+- [ ] Reemplazar uso de `0.0` como fallback por política formal `partial_features` o `missing_features`
 - [ ] Validar parámetros DSP con audios controlados (medir impacto real en biomarcadores)
-- [ ] Integrar flujo multi-toma en el frontend (interfaz "Toma 1 de 3")
 - [ ] Comparar Parselmouth vs openSMILE y DisVoice
-- [ ] Evaluar modelos: Random Forest, SVM, Logistic Regression, XGBoost
-- [ ] Reentrenar modelo solo con features del pipeline definitivo (con DSP aplicado)
 - [ ] Explorar embeddings profundos (Wav2Vec2, HuBERT, WavLM) con banco de audios suficiente
 
 ---
@@ -448,4 +470,5 @@ MIT © 2025-2026 — Proyecto Integrador — Ingeniería de Sistemas
 
 **Autores:** Adrián Espinosa, Diana Huertas, David Ríos  
 **Docente asesor:** Sandra Patricia Zabala Orrego  
-**Universidad:** [Institución] — Medellín, Colombia
+**Facultad de Ingeniería — Departamento de Ingeniería de Sistemas**  
+**Universidad de Antioquia** — Medellín, Colombia
