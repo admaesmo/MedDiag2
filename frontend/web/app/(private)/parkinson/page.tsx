@@ -1,29 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Mic, Play, Upload } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/atoms/button";
 import { Card } from "@/components/atoms/card";
 import { useSessionState } from "@/features/auth/use-session";
 import { useAudioRecording } from "@/features/parkinson/use-audio-recording";
-import { useParkinsonPrediction } from "@/features/parkinson/mutations";
 import {
   useVoiceSession,
   isTakeProcessed,
   isTakeFailed,
   isTakeInProgress,
 } from "@/features/parkinson/use-voice-session";
-import {
-  extractVoiceBiomarkersMultipart,
-  getAudioById,
-  getAudioFeatures,
-  getMyAudio,
-  isMockApiEnabled,
-  type VoiceBiomarkerExtractionResponse,
-  uploadAudioMultipart,
-} from "@/lib/api";
 import { useUiStore } from "@/stores/ui-store";
 import { t } from "@/lib/i18n";
 
@@ -66,27 +55,9 @@ function Alert({
 
 export default function ParkinsonPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const queryClient = useQueryClient();
   const locale = useUiStore((state) => state.locale);
   const consentAcceptedEmails = useUiStore((state) => state.parkinsonConsentAcceptedEmails);
   const addConsentEmail = useUiStore((state) => state.addParkinsonConsentEmail);
-  const [isUploadingAudio, setIsUploadingAudio] = useState(false);
-  const [isExtractingBiomarkers, setIsExtractingBiomarkers] = useState(false);
-  const [audioUploadMessage, setAudioUploadMessage] = useState<string | null>(null);
-  const [audioUploadError, setAudioUploadError] = useState<string | null>(null);
-  const [isUploadingFile, setIsUploadingFile] = useState(false);
-  const [inputMode, setInputMode] = useState<"record" | "upload">("record");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [biomarkerMessage, setBiomarkerMessage] = useState<string | null>(null);
-  const [biomarkerError, setBiomarkerError] = useState<string | null>(null);
-  const [biomarkerResponse, setBiomarkerResponse] = useState<VoiceBiomarkerExtractionResponse | null>(null);
-  const [previewFeatures, setPreviewFeatures] = useState<Record<string, number> | null>(null);
-  const [previewAudioId, setPreviewAudioId] = useState<number | null>(null);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [previewConsentChecked, setPreviewConsentChecked] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [consentError, setConsentError] = useState<string | null>(null);
   const [recordingForTake, setRecordingForTake] = useState<number | null>(null);
   const [confirmingRemoveTake, setConfirmingRemoveTake] = useState<number | null>(null);
@@ -98,39 +69,17 @@ export default function ParkinsonPage() {
   });
   const firstConsentRef = useRef<HTMLInputElement>(null);
   const { accessToken, email, loading: sessionLoading } = useSessionState();
-  const recording = useAudioRecording();
   const sessionRecording = useAudioRecording();
-  const prediction = useParkinsonPrediction(accessToken, email);
   const voiceSession = useVoiceSession(accessToken);
-  const mockApiEnabled = isMockApiEnabled();
-  const audioQuery = useQuery({
-    queryKey: ["audio", "me", "parkinson"],
-    enabled: Boolean(accessToken) && !mockApiEnabled,
-    queryFn: () => getMyAudio(accessToken as string),
-    refetchInterval: (query) => {
-      const hasProcessing = query.state.data?.items?.some((item) => item.status === "processing");
-      return hasProcessing ? 2000 : false;
-    },
-  });
-  // Excluir tomas de sesión multi-toma: el panel superior es solo para el flujo de toma única.
-  const latestAudio =
-    audioQuery.data?.items?.find((item) => item.session_id == null) ?? null;
-  const isAudioReady = Boolean(
-    latestAudio &&
-      (latestAudio.is_ready_for_inference ?? ["processed", "transcribed"].includes(latestAudio.status)),
-  );
-  const isAudioProcessing = latestAudio?.status === "processing";
-  const audioFailed = !mockApiEnabled && latestAudio?.status === "failed";
-  const audioFailureReason = latestAudio?.processing_error ?? null;
-  const canRunInference = mockApiEnabled || (Boolean(accessToken) && isAudioReady && !isAudioProcessing);
-  const elapsedLabel = formatElapsed(recording.elapsedSeconds);
+
+  const aggregatedFeatures = voiceSession.result?.aggregated_features;
 
   const biomarkerCards = [
     {
       key: "pitch_mean",
       label: t(locale, "parkinson", "biomarkerPitchMean"),
       description: t(locale, "parkinson", "biomarkerPitchMeanInfo"),
-      value: biomarkerResponse?.biomarkers.pitch_mean,
+      value: aggregatedFeatures?.["MDVP:Fo(Hz)"],
       unit: "Hz",
       decimals: 2,
     },
@@ -138,7 +87,7 @@ export default function ParkinsonPage() {
       key: "pitch_min",
       label: t(locale, "parkinson", "biomarkerPitchMin"),
       description: t(locale, "parkinson", "biomarkerPitchMinInfo"),
-      value: biomarkerResponse?.biomarkers.pitch_min,
+      value: aggregatedFeatures?.["MDVP:Flo(Hz)"],
       unit: "Hz",
       decimals: 2,
     },
@@ -146,7 +95,7 @@ export default function ParkinsonPage() {
       key: "pitch_max",
       label: t(locale, "parkinson", "biomarkerPitchMax"),
       description: t(locale, "parkinson", "biomarkerPitchMaxInfo"),
-      value: biomarkerResponse?.biomarkers.pitch_max,
+      value: aggregatedFeatures?.["MDVP:Fhi(Hz)"],
       unit: "Hz",
       decimals: 2,
     },
@@ -154,7 +103,7 @@ export default function ParkinsonPage() {
       key: "jitter_local",
       label: t(locale, "parkinson", "biomarkerJitterLocal"),
       description: t(locale, "parkinson", "biomarkerJitterLocalInfo"),
-      value: biomarkerResponse?.biomarkers.jitter_local,
+      value: aggregatedFeatures?.["MDVP:Jitter(%)"],
       unit: "",
       decimals: 6,
     },
@@ -162,7 +111,7 @@ export default function ParkinsonPage() {
       key: "shimmer_local",
       label: t(locale, "parkinson", "biomarkerShimmerLocal"),
       description: t(locale, "parkinson", "biomarkerShimmerLocalInfo"),
-      value: biomarkerResponse?.biomarkers.shimmer_local,
+      value: aggregatedFeatures?.["MDVP:Shimmer"],
       unit: "",
       decimals: 6,
     },
@@ -170,7 +119,7 @@ export default function ParkinsonPage() {
       key: "hnr_mean",
       label: t(locale, "parkinson", "biomarkerHnrMean"),
       description: t(locale, "parkinson", "biomarkerHnrMeanInfo"),
-      value: biomarkerResponse?.biomarkers.hnr_mean,
+      value: aggregatedFeatures?.["HNR"],
       unit: "dB",
       decimals: 2,
     },
@@ -198,13 +147,6 @@ export default function ParkinsonPage() {
   const canProceed = checks.data && checks.validation && checks.service;
 
   const validSessionTakes = voiceSession.session?.takes.filter((tk) => isTakeProcessed(tk.status)).length ?? 0;
-  const activePrediction = prediction.data ?? null;
-  const result = useMemo(() => {
-    if (!activePrediction) {
-      return null;
-    }
-    return `${(activePrediction.probability * 100).toFixed(2)}%`;
-  }, [activePrediction]);
 
   const handleContinue = () => {
     if (!canProceed) {
@@ -252,360 +194,22 @@ export default function ParkinsonPage() {
     t(locale, "parkinson", "recordingDont3"),
   ];
 
-  const guidanceStatus = recording.isRecording
+  const guidanceStatus = sessionRecording.isRecording
     ? t(locale, "parkinson", "recordingActiveHint")
-    : isExtractingBiomarkers || isUploadingAudio || isUploadingFile
+    : voiceSession.addingTakeNumber !== null
       ? t(locale, "parkinson", "recordingProcessingHint")
       : t(locale, "parkinson", "recordingIdleHint");
 
-  // ── Helper: upload del blob después de autorización ──
-  // Retorna el audio_id subido (para vincularlo al diagnóstico) o null si falla.
-  const uploadBlobAfterConsent = async (
-    blob: Blob,
-    fileName: string,
-    sourceType: string,
-  ): Promise<number | null> => {
-    if (!accessToken && !mockApiEnabled) {
-      setAudioUploadError(t(locale, "parkinson", "authRequiredForUpload"));
-      return null;
-    }
-
-    try {
-      setIsUploadingAudio(true);
-      const response = await uploadAudioMultipart(accessToken ?? "", blob, fileName, {
-        sourceType,
-        languageCode: locale.split("-")[0],
-      });
-      setAudioUploadMessage(`${t(locale, "parkinson", "uploadSuccess")}: #${response.audio_id}`);
-      queryClient.invalidateQueries({ queryKey: ["audio", "me"] });
-      queryClient.invalidateQueries({ queryKey: ["audio", "me", "parkinson"] });
-      return response.audio_id;
-    } catch {
-      setAudioUploadMessage(null);
-      setAudioUploadError(t(locale, "parkinson", "uploadError"));
-      return null;
-    } finally {
-      setIsUploadingAudio(false);
-    }
-  };
-
-  // ── Handle: grabar audio ──
-  const handleRecordButtonClick = async () => {
-    if (isConsentOpen || isUploadingAudio || isExtractingBiomarkers) {
-      return;
-    }
-
-    if (!recording.isRecording) {
-      setAudioUploadMessage(null);
-      setAudioUploadError(null);
-      setBiomarkerMessage(null);
-      setBiomarkerError(null);
-      setBiomarkerResponse(null);
-      prediction.reset();
-      recording.resetRecording();
-      await recording.startRecording();
-      return;
-    }
-
-    const audioBlob = await recording.stopRecording();
-    if (!audioBlob || audioBlob.size === 0) {
-      setAudioUploadError(t(locale, "parkinson", "noAudioCaptured"));
-      return;
-    }
-
-    setBiomarkerError(null);
-    setBiomarkerMessage(null);
-    setAudioUploadError(null);
-    setAudioUploadMessage(null);
-    prediction.reset();
-
-    const extension = audioBlob.type.includes("webm")
-      ? "webm"
-      : audioBlob.type.includes("mp4")
-        ? "m4a"
-        : audioBlob.type.includes("ogg")
-          ? "ogg"
-          : "wav";
-    const uploadFileName = `recording-${Date.now()}.${extension}`;
-
-    // 1. Extraer biomarcadores
-    let biomarkers: VoiceBiomarkerExtractionResponse;
-    try {
-      setIsExtractingBiomarkers(true);
-      biomarkers = await extractVoiceBiomarkersMultipart(audioBlob, uploadFileName);
-      setBiomarkerResponse(biomarkers);
-      setBiomarkerMessage(t(locale, "parkinson", "biomarkerSuccess"));
-    } catch (error) {
-      setBiomarkerResponse(null);
-      setBiomarkerMessage(null);
-      setBiomarkerError(
-        error instanceof Error ? error.message : t(locale, "parkinson", "biomarkerExtractError"),
-      );
-      setIsExtractingBiomarkers(false);
-      return;
-    } finally {
-      setIsExtractingBiomarkers(false);
-    }
-
-    // 2. Mostrar modal de pre-análisis con los features completos
-    const features = biomarkers.parkinson_model_input.features;
-    setPreviewFeatures(features);
-    setPreviewAudioId(null);
-    setPreviewConsentChecked(false);
-    setPreviewError(null);
-    setIsPreviewOpen(true);
-
-    // Guardamos en una ref para que handleConfirmInference lo use
-    pendingRecordRef.current = { blob: audioBlob, fileName: uploadFileName, sourceType: "microphone" };
-  };
-
-  // Ref para pasar datos de grabación/upload al confirmar
-  const pendingRecordRef = useRef<{ blob: Blob; fileName: string; sourceType: string } | null>(null);
-  const pendingUploadRef = useRef<{ file: File; fileName: string } | null>(null);
-
-  // ── Handle: subir archivo ──
-  const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Reset file input so the same file can be selected again
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-
-    // Validate file type
-    const validTypes = ["audio/wav", "audio/mp3", "audio/mpeg", "audio/ogg", "audio/webm", "audio/mp4", "audio/x-m4a", "audio/x-wav"];
-    const isWav = file.name.toLowerCase().endsWith(".wav");
-    const isMp3 = file.name.toLowerCase().endsWith(".mp3");
-    const isOgg = file.name.toLowerCase().endsWith(".ogg");
-    const isWebm = file.name.toLowerCase().endsWith(".webm");
-    const isM4a = file.name.toLowerCase().endsWith(".m4a");
-    if (!isWav && !isMp3 && !isOgg && !isWebm && !isM4a && !validTypes.includes(file.type)) {
-      setAudioUploadError(t(locale, "parkinson", "invalidFileType"));
-      return;
-    }
-
-    // Validate file size (25 MB max)
-    const maxSize = 25 * 1024 * 1024;
-    if (file.size > maxSize) {
-      setAudioUploadError(t(locale, "parkinson", "fileTooLarge"));
-      return;
-    }
-
-    setAudioUploadError(null);
-    setAudioUploadMessage(null);
-    setBiomarkerError(null);
-    setBiomarkerMessage(null);
-    setBiomarkerResponse(null);
-    prediction.reset();
-
-    const extension = file.name.split(".").pop() || "wav";
-    const uploadFileName = `uploaded-${Date.now()}.${extension}`;
-
-    // 1. Extraer biomarcadores
-    let biomarkers: VoiceBiomarkerExtractionResponse;
-    try {
-      setIsUploadingFile(true);
-      biomarkers = await extractVoiceBiomarkersMultipart(file, uploadFileName);
-      setBiomarkerResponse(biomarkers);
-      setBiomarkerMessage(t(locale, "parkinson", "biomarkerSuccess"));
-    } catch (error) {
-      setBiomarkerResponse(null);
-      setBiomarkerMessage(null);
-      setBiomarkerError(
-        error instanceof Error ? error.message : t(locale, "parkinson", "biomarkerExtractError"),
-      );
-      setIsUploadingFile(false);
-      return;
-    } finally {
-      setIsUploadingFile(false);
-    }
-
-    // 2. Mostrar modal de pre-análisis
-    const features = biomarkers.parkinson_model_input.features;
-    setPreviewFeatures(features);
-    setPreviewAudioId(null);
-    setPreviewConsentChecked(false);
-    setPreviewError(null);
-    setIsPreviewOpen(true);
-
-    // Guardamos ref para subir después si confirma
-    pendingUploadRef.current = { file, fileName: uploadFileName };
-  };
-
-  const recordingErrorMessage =
-    recording.error === "recording_not_supported"
+  const sessionRecordingErrorMessage =
+    sessionRecording.error === "recording_not_supported"
       ? t(locale, "parkinson", "recordingNotSupported")
-      : recording.error === "microphone_permission_denied"
+      : sessionRecording.error === "microphone_permission_denied"
         ? t(locale, "parkinson", "micPermissionDenied")
-        : recording.error === "audio_conversion_failed"
+        : sessionRecording.error === "audio_conversion_failed"
           ? t(locale, "parkinson", "audioConversionFailed")
-        : recording.error === "recording_failed"
-          ? t(locale, "parkinson", "recordingFailed")
-          : null;
-
-  // ── Handle: botón "Run Inference" (desde audio ya subido) ──
-  const handleInferenceClick = async (audioId?: number) => {
-    if (!accessToken) {
-      setAudioUploadError(t(locale, "parkinson", "authRequiredForUpload"));
-      return;
-    }
-
-    const targetId = audioId ?? latestAudio?.id;
-    if (!targetId) {
-      setAudioUploadError(t(locale, "parkinson", "noAudioForInference"));
-      return;
-    }
-
-    // Solo bloquear por estado cuando se usa el audio más reciente (no al venir del historial).
-    if (audioId === undefined && (!isAudioReady || isAudioProcessing)) {
-      setAudioUploadError(t(locale, "parkinson", "audioStillProcessing"));
-      return;
-    }
-
-    try {
-      setAudioUploadError(null);
-      setPreviewError(null);
-      setPreviewConsentChecked(false);
-      setIsLoadingPreview(true);
-      const response = await getAudioFeatures(accessToken, targetId);
-      setPreviewFeatures(response.features);
-      setPreviewAudioId(targetId);
-      setIsPreviewOpen(true);
-    } catch {
-      setAudioUploadError(t(locale, "parkinson", "featureLoadError"));
-    } finally {
-      setIsLoadingPreview(false);
-    }
-  };
-
-  // ── Al llegar desde el historial (?audio=ID): cargar features de esa prueba ──
-  const loadedAudioParamRef = useRef<string | null>(null);
-  useEffect(() => {
-    const audioParam = searchParams.get("audio");
-    if (!audioParam || !accessToken || isConsentOpen) return;
-    if (loadedAudioParamRef.current === audioParam) return;
-    loadedAudioParamRef.current = audioParam;
-    const audioId = Number(audioParam);
-    if (Number.isFinite(audioId)) {
-      void handleInferenceClick(audioId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, accessToken, isConsentOpen]);
-
-  // Construye un panel de biomarcadores a partir de los features del modelo
-  // (usado al re-ejecutar una prueba desde el historial).
-  const buildBiomarkerResponseFromFeatures = (
-    features: Record<string, number>,
-    meta: { original_filename?: string | null; mime_type?: string | null; duration_seconds?: number | null } | null,
-    inference: { prediction: number; probability: number; message: string },
-  ): VoiceBiomarkerExtractionResponse => ({
-    status: "ok",
-    audio: {
-      original_filename: meta?.original_filename ?? null,
-      content_type: meta?.mime_type ?? null,
-      sample_rate_hz: 16000,
-      channels: 1,
-      normalized_format: "wav",
-      duration_seconds: meta?.duration_seconds ?? 0,
-    },
-    biomarkers: {
-      pitch_mean: features["MDVP:Fo(Hz)"],
-      pitch_min: features["MDVP:Flo(Hz)"],
-      pitch_max: features["MDVP:Fhi(Hz)"],
-      jitter_local: features["MDVP:Jitter(%)"],
-      shimmer_local: features["MDVP:Shimmer"],
-      hnr_mean: features["HNR"],
-    },
-    parkinson_model_bridge: {
-      model_name: "parkinson",
-      mapped_features: {},
-      missing_features: [],
-      ready_for_direct_inference: true,
-      note: t(locale, "parkinson", "historyReplayNote"),
-    },
-    parkinson_model_input: {
-      model_name: "parkinson",
-      features,
-      feature_count: Object.keys(features).length,
-      required_feature_count: 22,
-      ready_for_direct_inference: true,
-      note: t(locale, "parkinson", "historyReplayNote"),
-    },
-    parkinson_inference: {
-      model_name: "parkinson",
-      disease_code: "PARK",
-      prediction: inference.prediction,
-      probability: inference.probability,
-      message: inference.message,
-    },
-  });
-
-  // ── Handle: confirmar inferencia desde el modal ──
-  const handleConfirmInference = async () => {
-    if (!previewFeatures) {
-      setPreviewError(t(locale, "parkinson", "previewNoFeatures"));
-      return;
-    }
-
-    if (!previewConsentChecked) {
-      setPreviewError(t(locale, "parkinson", "previewConsentRequired"));
-      return;
-    }
-
-    setPreviewError(null);
-    setIsPreviewOpen(false);
-
-    const features = previewFeatures;
-    const fromHistory = previewAudioId != null;
-    let audioId: number | undefined = previewAudioId ?? undefined;
-
-    // 1. Subir primero (si hay pendiente) para obtener el audio_id y vincularlo al diagnóstico.
-    if (pendingRecordRef.current) {
-      const { blob, fileName, sourceType } = pendingRecordRef.current;
-      pendingRecordRef.current = null;
-      const uploadedId = await uploadBlobAfterConsent(blob, fileName, sourceType);
-      if (uploadedId != null) audioId = uploadedId;
-    } else if (pendingUploadRef.current) {
-      const { file, fileName } = pendingUploadRef.current;
-      pendingUploadRef.current = null;
-      if (accessToken || mockApiEnabled) {
-        try {
-          setIsUploadingFile(true);
-          const response = await uploadAudioMultipart(accessToken ?? "", file, fileName, {
-            sourceType: "upload",
-            languageCode: locale.split("-")[0],
-          });
-          setAudioUploadMessage(`${t(locale, "parkinson", "uploadAudioSuccess")}: #${response.audio_id}`);
-          queryClient.invalidateQueries({ queryKey: ["audio", "me"] });
-          queryClient.invalidateQueries({ queryKey: ["audio", "me", "parkinson"] });
-          audioId = response.audio_id;
-        } catch {
-          setAudioUploadMessage(null);
-          setAudioUploadError(t(locale, "parkinson", "uploadAudioError"));
-        } finally {
-          setIsUploadingFile(false);
-        }
-      }
-    }
-
-    // 2. Ejecutar inferencia vinculada al audio.
-    try {
-      const inference = await prediction.mutateAsync({ features, audioId });
-      queryClient.invalidateQueries({ queryKey: ["history", "full"] });
-
-      // 3. Si la prueba viene del historial, reconstruir el panel de biomarcadores.
-      if (fromHistory && accessToken) {
-        const meta = await getAudioById(audioId as number, accessToken).catch(() => null);
-        setBiomarkerResponse(buildBiomarkerResponseFromFeatures(features, meta, inference));
-        setBiomarkerMessage(t(locale, "parkinson", "biomarkerSuccess"));
-      }
-    } catch {
-      setAudioUploadError(t(locale, "parkinson", "inferenceError"));
-    } finally {
-      setPreviewAudioId(null);
-    }
-  };
+          : sessionRecording.error === "recording_failed"
+            ? t(locale, "parkinson", "recordingFailed")
+            : null;
 
   return (
     <section id="main-content" className="space-y-8">
@@ -662,64 +266,6 @@ export default function ParkinsonPage() {
             <div className="mt-6 flex gap-2">
               <Button variant="secondary" onClick={() => router.push("/dashboard")}>{t(locale, "parkinson", "decline")}</Button>
               <Button type="button" onClick={handleContinue}>{t(locale, "common", "continue")}</Button>
-            </div>
-          </Card>
-        </div>
-      ) : null}
-
-      {isPreviewOpen ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-foreground/25 p-4" role="dialog" aria-modal="true" aria-labelledby="preview-title">
-          <Card className="w-full max-w-3xl">
-            <h3 id="preview-title" className="text-2xl font-bold">{t(locale, "parkinson", "previewTitle")}</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t(locale, "parkinson", "previewDescription")}
-            </p>
-
-            <div className="mt-4 max-h-80 overflow-y-auto rounded-xl border border-primary/10 bg-primary/5 p-3">
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {Object.entries(previewFeatures ?? {}).map(([key, value]) => (
-                  <div key={key} className="flex items-baseline justify-between gap-2 rounded-lg bg-white/80 px-3 py-2">
-                    <span className="text-xs font-semibold text-muted-foreground">{key}</span>
-                    <span className="text-sm font-bold text-foreground">
-                      {typeof value === "number" ? value.toFixed(6) : String(value)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <label className="mt-4 flex items-start gap-3 text-sm text-foreground">
-              <input
-                type="checkbox"
-                checked={previewConsentChecked}
-                onChange={(event) => setPreviewConsentChecked(event.target.checked)}
-                className="mt-1 h-4 w-4"
-              />
-              <span>{t(locale, "parkinson", "previewConsentLabel")}</span>
-            </label>
-
-            {previewError ? (
-              <p className="mt-3 text-sm font-semibold text-red-700" role="alert">
-                {previewError}
-              </p>
-            ) : null}
-
-            <div className="mt-6 flex gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setIsPreviewOpen(false);
-                  setPreviewConsentChecked(false);
-                  setPreviewError(null);
-                  pendingRecordRef.current = null;
-                  pendingUploadRef.current = null;
-                }}
-              >
-                {t(locale, "parkinson", "previewCancel")}
-              </Button>
-              <Button type="button" onClick={handleConfirmInference} disabled={prediction.isPending}>
-                {prediction.isPending ? t(locale, "parkinson", "previewLoading") : t(locale, "parkinson", "previewConfirm")}
-              </Button>
             </div>
           </Card>
         </div>
@@ -837,276 +383,7 @@ export default function ParkinsonPage() {
           </div>
         </div>
 
-        <Card className="mx-auto max-w-3xl bg-white/90 text-center backdrop-blur">
-          <div className="relative mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary text-white">
-            {recording.isRecording ? <span className="absolute inset-0 rounded-2xl bg-primary/30 animate-pulse-ring" aria-hidden="true" /> : null}
-            <Mic className="relative h-9 w-9" />
-          </div>
-
-          <h3 className="text-3xl font-bold">{t(locale, "parkinson", "recordTitle")}</h3>
-          <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t(locale, "parkinson", "recordSubtitle")}</p>
-
-          <div className="mx-auto mt-8 flex w-full max-w-md items-end justify-center gap-1 rounded-xl bg-primary/5 p-4">
-            {[18, 36, 28, 54, 24, 44, 38, 50, 26, 32].map((height, index) => (
-              <span key={`audio-bar-${index}`} className="w-1 rounded-full bg-primary/65" style={{ height }} />
-            ))}
-          </div>
-
-          {/* Mode toggle */}
-          <div className="mt-8 flex justify-center">
-            <div className="inline-flex rounded-xl border border-surface-low bg-surface-low p-1">
-              <button
-                type="button"
-                onClick={() => setInputMode("record")}
-                disabled={isConsentOpen}
-                className={`flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold transition-all ${
-                  inputMode === "record"
-                    ? "bg-white text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Mic className="h-4 w-4" />
-                {t(locale, "parkinson", "start")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setInputMode("upload")}
-                disabled={isConsentOpen || recording.isRecording}
-                className={`flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold transition-all ${
-                  inputMode === "upload"
-                    ? "bg-white text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Upload className="h-4 w-4" />
-                {isUploadingFile
-                  ? t(locale, "parkinson", "uploading")
-                  : t(locale, "parkinson", "uploadAudioFile")}
-              </button>
-            </div>
-          </div>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".wav,.mp3,.ogg,.webm,.m4a,audio/*"
-            className="hidden"
-            onChange={handleFileSelected}
-          />
-
-          {/* Action buttons per mode */}
-          <div className="mt-4 flex flex-col items-center gap-3">
-            {inputMode === "record" ? (
-              <div className="flex items-center gap-3">
-                <Button
-                  size="lg"
-                  onClick={handleRecordButtonClick}
-                  disabled={isConsentOpen || isUploadingAudio || isExtractingBiomarkers || isUploadingFile}
-                >
-                  <Mic className="mr-2 h-4 w-4" />
-                  {isExtractingBiomarkers
-                    ? t(locale, "parkinson", "extractingBiomarkers")
-                    : isUploadingAudio
-                    ? t(locale, "parkinson", "uploading")
-                    : recording.isRecording
-                      ? t(locale, "parkinson", "stop")
-                      : t(locale, "parkinson", "start")}
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  onClick={() => handleInferenceClick()}
-                  disabled={!canRunInference || prediction.isPending || isConsentOpen || isLoadingPreview}
-                >
-                  {prediction.isPending
-                    ? t(locale, "parkinson", "processing")
-                    : isLoadingPreview
-                      ? t(locale, "parkinson", "previewLoading")
-                      : isAudioProcessing
-                      ? t(locale, "parkinson", "audioProcessing")
-                      : t(locale, "parkinson", "runInference")}
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-2">
-                <Button
-                  size="lg"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isConsentOpen || isUploadingFile || recording.isRecording}
-                >
-                  <Play className="mr-2 h-4 w-4" />
-                  {isUploadingFile
-                    ? t(locale, "parkinson", "uploading")
-                    : t(locale, "parkinson", "uploadAudioFile")}
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  onClick={() => handleInferenceClick()}
-                  disabled={!canRunInference || prediction.isPending || isConsentOpen || isLoadingPreview}
-                >
-                  {prediction.isPending
-                    ? t(locale, "parkinson", "processing")
-                    : isLoadingPreview
-                      ? t(locale, "parkinson", "previewLoading")
-                      : isAudioProcessing
-                      ? t(locale, "parkinson", "audioProcessing")
-                      : t(locale, "parkinson", "runInference")}
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {!mockApiEnabled && latestAudio && !audioFailed ? (
-            <p className="mt-2 text-xs text-muted-foreground" role="status" aria-live="polite">
-              {isAudioProcessing
-                ? t(locale, "parkinson", "audioStillProcessing")
-                : isAudioReady
-                  ? t(locale, "parkinson", "audioReadyForInference")
-                  : t(locale, "parkinson", "noAudioForInference")}
-            </p>
-          ) : null}
-
-          <p className="mt-4 text-sm text-muted-foreground">
-            {t(locale, "parkinson", "elapsed")}: <span className="font-headline text-lg text-foreground">{elapsedLabel}</span>
-          </p>
-
-          {/* Alerta de fallo al analizar el audio (oculta el resultado) */}
-          {audioFailed ? (
-            <Alert
-              variant="error"
-              title={t(locale, "parkinson", "analysisFailed")}
-              detail={audioFailureReason}
-            />
-          ) : null}
-
-          {/* Resultado de inferencia destacado (solo si el audio no falló) */}
-          {!audioFailed && result ? (
-            <div
-              className={`mx-auto mt-6 w-full max-w-md rounded-2xl border p-5 ${
-                activePrediction?.prediction === 1
-                  ? "border-red-200 bg-red-50"
-                  : "border-emerald-200 bg-emerald-50"
-              }`}
-              aria-live="polite"
-            >
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                {t(locale, "parkinson", "confidenceLabel")}
-              </p>
-              <p
-                className={`mt-1 text-3xl font-bold ${
-                  activePrediction?.prediction === 1 ? "text-red-700" : "text-emerald-700"
-                }`}
-              >
-                {result}
-              </p>
-              {activePrediction?.message ? (
-                <p className="mt-2 text-sm font-medium text-foreground">{activePrediction.message}</p>
-              ) : null}
-            </div>
-          ) : null}
-
-          {/* Alertas de error consolidadas */}
-          {recordingErrorMessage ? (
-            <Alert variant="error" title={recordingErrorMessage} />
-          ) : null}
-
-          {biomarkerError ? <Alert variant="error" title={biomarkerError} /> : null}
-
-          {audioUploadError ? <Alert variant="error" title={audioUploadError} /> : null}
-
-          {prediction.isError && !audioFailed ? (
-            <Alert variant="error" title={t(locale, "parkinson", "inferenceError")} />
-          ) : null}
-
-          {!audioFailed && biomarkerResponse ? (
-            <div className="mt-8 rounded-2xl border border-primary/10 bg-primary/5 p-5 text-left">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    {t(locale, "parkinson", "biomarkerPanelTitle")}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {t(locale, "parkinson", "biomarkerPanelHint")}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    {t(locale, "parkinson", "biomarkerMetadataLabel")}
-                  </p>
-                  <p className="mt-1 text-sm text-foreground">
-                    {biomarkerResponse.audio.sample_rate_hz} Hz | {biomarkerResponse.audio.channels} ch | {biomarkerResponse.audio.normalized_format.toUpperCase()} | {biomarkerResponse.audio.duration_seconds.toFixed(2)} s
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {biomarkerCards.map((item) => (
-                  <div key={item.key} className="rounded-xl bg-white/80 p-4 shadow-sm">
-                    <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                      {t(locale, "parkinson", "measureLabel")}
-                    </p>
-                    <p className="mt-2 text-sm font-semibold text-foreground">{item.label}</p>
-                    <p className="mt-2 text-2xl font-bold text-foreground">
-                      {typeof item.value === "number"
-                        ? `${item.value.toFixed(item.decimals)}${item.unit ? ` ${item.unit}` : ""}`
-                        : t(locale, "common", "notAvailable")}
-                    </p>
-                    <p className="mt-2 text-xs text-muted-foreground" title={item.description}>
-                      {item.description}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-4 rounded-xl bg-white/80 p-4 shadow-sm">
-                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                  {t(locale, "parkinson", "directModelResultLabel")}
-                </p>
-                <p className="mt-2 text-sm text-foreground">
-                  {t(locale, "common", "model")}: {biomarkerResponse.parkinson_model_input.model_name}
-                </p>
-                <p className="mt-1 text-sm text-foreground">
-                  {t(locale, "parkinson", "modelVectorCoverageLabel")}: {biomarkerResponse.parkinson_model_input.feature_count}/
-                  {biomarkerResponse.parkinson_model_input.required_feature_count}
-                </p>
-                <p className="mt-2 text-sm font-semibold text-foreground">
-                  {`${t(locale, "parkinson", "confidenceLabel")}: ${(biomarkerResponse.parkinson_inference.probability * 100).toFixed(2)}%`}
-                </p>
-                <p className="mt-1 text-sm text-foreground">
-                  {biomarkerResponse.parkinson_inference.message}
-                </p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {biomarkerResponse.parkinson_model_input.note}
-                </p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {biomarkerResponse.parkinson_model_bridge.note}
-                </p>
-              </div>
-
-              <div className="mt-4 rounded-xl bg-white/80 p-4 shadow-sm">
-                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                  {t(locale, "parkinson", "modelFeaturesTitle")}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t(locale, "parkinson", "modelFeaturesHint")}
-                </p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  {Object.entries(biomarkerResponse.parkinson_model_input.features).map(([key, value]) => (
-                    <div key={key} className="flex items-baseline justify-between gap-2 rounded-lg bg-white/60 px-3 py-2">
-                      <span className="text-xs font-semibold text-muted-foreground">{key}</span>
-                      <span className="text-sm font-bold text-foreground">
-                        {typeof value === "number" ? value.toFixed(4) : String(value)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </Card>
-
-        {/* ── Sesión multi-toma ── */}
+        {/* ── Sesión multi-toma: único punto de entrada para la medición ── */}
         <Card className="mx-auto max-w-3xl border border-primary/10 bg-white/90 text-left backdrop-blur">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -1141,9 +418,9 @@ export default function ParkinsonPage() {
             </p>
           )}
 
-          {sessionRecording.error === "microphone_permission_denied" && recordingForTake !== null && (
+          {sessionRecordingErrorMessage && recordingForTake !== null && (
             <p className="mt-2 text-sm font-semibold text-red-700" role="alert">
-              {t(locale, "parkinson", "micPermissionDenied")}
+              {sessionRecordingErrorMessage}
             </p>
           )}
 
@@ -1345,31 +622,81 @@ export default function ParkinsonPage() {
               )}
 
               {voiceSession.result && (
-                <div className="mt-4 rounded-2xl border border-primary/10 bg-primary/5 p-5 space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    {t(locale, "parkinson", "sessionResultTitle")}
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-xl bg-white/80 p-3 shadow-sm">
-                      <p className="text-xs text-muted-foreground">
-                        {t(locale, "parkinson", "confidenceLabel")}
-                      </p>
-                      <p className="mt-1 text-2xl font-bold text-foreground">
-                        {(voiceSession.result.probability * 100).toFixed(1)}%
-                      </p>
+                <div className="mt-4 space-y-4">
+                  <div className="rounded-2xl border border-primary/10 bg-primary/5 p-5 space-y-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      {t(locale, "parkinson", "sessionResultTitle")}
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-xl bg-white/80 p-3 shadow-sm">
+                        <p className="text-xs text-muted-foreground">
+                          {t(locale, "parkinson", "confidenceLabel")}
+                        </p>
+                        <p className="mt-1 text-2xl font-bold text-foreground">
+                          {(voiceSession.result.probability * 100).toFixed(1)}%
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-white/80 p-3 shadow-sm">
+                        <p className="text-xs text-muted-foreground">
+                          {t(locale, "parkinson", "sessionConfidenceLabel")}
+                        </p>
+                        <p className="mt-1 text-2xl font-bold text-foreground">
+                          {(voiceSession.result.session_confidence * 100).toFixed(1)}%
+                        </p>
+                      </div>
                     </div>
-                    <div className="rounded-xl bg-white/80 p-3 shadow-sm">
-                      <p className="text-xs text-muted-foreground">
-                        {t(locale, "parkinson", "sessionConfidenceLabel")}
+                    <p className="text-sm font-semibold text-foreground">
+                      {voiceSession.result.message}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-primary/10 bg-primary/5 p-5 text-left">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      {t(locale, "parkinson", "biomarkerPanelTitle")}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {t(locale, "parkinson", "biomarkerPanelHint")}
+                    </p>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {biomarkerCards.map((item) => (
+                        <div key={item.key} className="rounded-xl bg-white/80 p-4 shadow-sm">
+                          <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                            {t(locale, "parkinson", "measureLabel")}
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-foreground">{item.label}</p>
+                          <p className="mt-2 text-2xl font-bold text-foreground">
+                            {typeof item.value === "number"
+                              ? `${item.value.toFixed(item.decimals)}${item.unit ? ` ${item.unit}` : ""}`
+                              : t(locale, "common", "notAvailable")}
+                          </p>
+                          <p className="mt-2 text-xs text-muted-foreground" title={item.description}>
+                            {item.description}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-4 rounded-xl bg-white/80 p-4 shadow-sm">
+                      <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                        {t(locale, "parkinson", "modelFeaturesTitle")}
                       </p>
-                      <p className="mt-1 text-2xl font-bold text-foreground">
-                        {(voiceSession.result.session_confidence * 100).toFixed(1)}%
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {t(locale, "parkinson", "modelFeaturesHint")}
                       </p>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                        {Object.entries(aggregatedFeatures ?? {}).map(([key, value]) => (
+                          <div key={key} className="flex items-baseline justify-between gap-2 rounded-lg bg-white/60 px-3 py-2">
+                            <span className="text-xs font-semibold text-muted-foreground">{key}</span>
+                            <span className="text-sm font-bold text-foreground">
+                              {typeof value === "number" ? value.toFixed(4) : String(value)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                  <p className="text-sm font-semibold text-foreground">
-                    {voiceSession.result.message}
-                  </p>
+
                   <Button variant="secondary" onClick={voiceSession.reset}>
                     {t(locale, "parkinson", "sessionReset")}
                   </Button>
