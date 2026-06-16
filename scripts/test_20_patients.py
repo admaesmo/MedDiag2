@@ -169,7 +169,7 @@ def evaluate_predictions(patients: list, thresholds: list = None):
     print("=" * 90)
     print("  PRUEBA DEL MODELO DE PARKINSON — 20 PACIENTES SIMULADOS")
     print("=" * 90)
-    print(f"\n  Modelo: XGBoost con SMOTE")
+    print(f"\n  Modelo: classic16 (16 features clásicas, sin no-lineales rotas)")
     print(f"  Umbral actual en producción: {PARKINSON_THRESHOLD}")
     print(f"  Features: {len(PARK_FEATURE_ORDER)} biomarcadores")
     print(f"  Pacientes: {len(patients)} (10 sanos, 10 Parkinson)")

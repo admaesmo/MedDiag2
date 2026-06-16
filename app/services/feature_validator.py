@@ -49,13 +49,14 @@ UCI_RANGES: Dict[str, Tuple[float, float]] = {
 
 
 # Features críticas que deben estar en rango para considerar la extracción válida
-# Son las que más se distorsionan con audio de celular
+# Son las que más se distorsionan con audio de celular.
+# RPDE/DFA se quitaron de esta lista (2026-06-16): ya no alimentan al modelo
+# de inferencia (ver PARKINSON_MODEL_FEATURE_ORDER en constants.py), así que
+# no tiene sentido que sigan bloqueando la validez de una extracción.
 CRITICAL_FEATURES = [
     "MDVP:Fo(Hz)",      # Frecuencia fundamental - debe ser razonable
     "HNR",              # Relación armónico-ruido - debe ser positiva
     "NHR",              # Ruido-armónicos - debe ser pequeño
-    "RPDE",             # Entropía - debe estar en [0.25, 0.75]
-    "DFA",              # Fluctuaciones - debe estar en [0.5, 0.85]
 ]
 
 

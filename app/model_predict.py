@@ -1,13 +1,28 @@
 """
 Módulo de predicción — carga modelos serializados y ejecuta inferencia.
 
-El modelo de Parkinson (XGBoost con SMOTE) fue entrenado sobre datos escalados
-con StandardScaler.  Este módulo aplica el scaler antes de predecir para
-mantener la consistencia con el contrato de entrenamiento.
+Modelo de Parkinson — "classic16" (2026-06-16):
+El modelo `parkinsons_model_smote.sav` (entrenado con las 22 features del
+dataset Oxford, incluyendo las 6 no lineales) predecía positivo casi siempre
+en audio real: RPDE/DFA/spread1/spread2/PPE quedan clampeadas al límite del
+rango UCI en 74-100% de los audios reales (ver diagnóstico de proyecto,
+memoria 2026-06-16). Se reentrenó usando solo las 16 features clásicas
+(jitter, shimmer, HNR, F0), y además directamente sobre audio real con
+diagnóstico confirmado (dataset figshare DOI 10.6084/m9.figshare.23849127,
+81 sujetos), porque un modelo entrenado solo con Oxford (laboratorio) no
+transfiere a audio real (AUC ~0.41-0.51 fuera de dominio). Ver
+`scripts/retrain_parkinson_classic16.py`.
+
+LIMITACIÓN CONOCIDA: N=81, AUC out-of-fold ~0.64, y el dataset de
+entrenamiento tiene un confound de edad no corregido (PD~67a vs HC~48a).
+Resultado preliminar, no validado clínicamente — ver memoria de proyecto.
+
+Este módulo aplica el scaler antes de predecir para mantener la
+consistencia con el contrato de entrenamiento.
 
 Archivos esperados en ``saved_models/``:
-    - parkinsons_model_smote.sav   (XGBoost entrenado con SMOTE — versión mejorada)
-    - parkinsons_scaler_smote.sav  (StandardScaler para modelo SMOTE)
+    - parkinsons_model_classic16.sav   (modelo classic16, ver arriba)
+    - parkinsons_scaler_classic16.sav  (StandardScaler para modelo classic16)
     - diabetes_model.sav           (modelo de diabetes, sin scaler)
     - heart_disease_model.sav      (modelo cardíaco, sin scaler)
 """
@@ -24,7 +39,7 @@ import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 
-from app.services.constants import PARKINSON_FEATURE_ORDER
+from app.services.constants import PARKINSON_FEATURE_ORDER, PARKINSON_MODEL_FEATURE_ORDER
 from app.services.feature_validator import validate_features, get_feature_quality_score
 
 load_dotenv()
@@ -87,32 +102,34 @@ diabetes_model = _load_model("diabetes_model.sav")
 heart_model = _load_model("heart_disease_model.sav")
 
 # ---------------------------------------------------------------------------
-# Modelo de Parkinson — XGBoost entrenado con SMOTE (balanceo de clases)
+# Modelo de Parkinson — "classic16", entrenado solo con features clásicas
+# sobre audio real (ver docstring del módulo y scripts/retrain_parkinson_classic16.py)
 # ---------------------------------------------------------------------------
 
-PARKINSON_CONFIDENCE_THRESHOLD = 0.70
+PARKINSON_CONFIDENCE_THRESHOLD = 0.40
 PARKINSON_THRESHOLD = PARKINSON_CONFIDENCE_THRESHOLD
 PARKINSON_POSITIVE_MESSAGE = (
-    "Veredicto: positivo para Parkinson. Confianza igual o superior al 70%. "
-    "Consulte a su médico."
+    "Veredicto: positivo para Parkinson. Confianza igual o superior al 40%. "
+    "Consulte a su médico. (Resultado preliminar, N=81, no validado clínicamente.)"
 )
 PARKINSON_NEGATIVE_MESSAGE = (
-    "Veredicto: no tiene Parkinson. Confianza inferior al 70%."
+    "Veredicto: no tiene Parkinson. Confianza inferior al 40%. "
+    "(Resultado preliminar, N=81, no validado clínicamente.)"
 )
 
 
 
 try:
-    parkinsons_model = _load_model("parkinsons_model_smote.sav")
-    parkinsons_scaler = _load_model("parkinsons_scaler_smote.sav")
+    parkinsons_model = _load_model("parkinsons_model_classic16.sav")
+    parkinsons_scaler = _load_model("parkinsons_scaler_classic16.sav")
     logger.info(
-        "parkinsons_model_smote.sav + scaler cargados — modelo SMOTE listo."
+        "parkinsons_model_classic16.sav + scaler cargados — modelo classic16 listo."
     )
 except (FileNotFoundError, Exception):
     parkinsons_model = None
     parkinsons_scaler = None
     logger.error(
-        "parkinsons_model_smote.sav no encontrado — la inferencia de Parkinson "
+        "parkinsons_model_classic16.sav no encontrado — la inferencia de Parkinson "
         "no estará disponible."
     )
 
@@ -174,17 +191,21 @@ def predict_parkinson(
     threshold: float = PARKINSON_THRESHOLD,
 ) -> Tuple[int, float]:
     """
-    Predice Parkinson usando XGBoost entrenado con SMOTE + umbral ajustable.
+    Predice Parkinson usando el modelo "classic16" + umbral ajustable.
 
-    El modelo fue entrenado con balanceo de clases (SMOTE) sobre las 22
-    features del dataset UCI Oxford, estandarizadas con StandardScaler.
+    El modelo usa solo las 16 features clásicas (jitter, shimmer, HNR, F0).
+    Las 6 no lineales del esquema completo (RPDE, DFA, spread1, spread2, D2,
+    PPE) se ignoran a propósito: su extracción queda clampeada al límite del
+    rango UCI en 74-100% de los audios reales, lo que hacía que el modelo
+    anterior predijera positivo casi siempre (ver docstring del módulo).
 
     Parameters
     ----------
     features : Dict[str, float]
-        Las 22 características del dataset UCI Oxford.
+        Dict con (al menos) las 16 features clásicas. Puede incluir además
+        las 6 no lineales del esquema completo — se ignoran si están.
     threshold : float, optional
-        Umbral de probabilidad para clasificación (default 0.70).
+        Umbral de probabilidad para clasificación (default 0.40).
 
     Returns
     -------
@@ -195,8 +216,8 @@ def predict_parkinson(
         raise RuntimeError("Modelo de Parkinson no disponible.")
 
     x = pd.DataFrame(
-        [[float(features[f]) for f in PARKINSON_FEATURE_ORDER]],
-        columns=PARKINSON_FEATURE_ORDER,
+        [[float(features[f]) for f in PARKINSON_MODEL_FEATURE_ORDER]],
+        columns=PARKINSON_MODEL_FEATURE_ORDER,
     )
     x = parkinsons_scaler.transform(x)
     proba = float(parkinsons_model.predict_proba(x)[0][1])

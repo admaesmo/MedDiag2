@@ -31,7 +31,7 @@ TARGET_CHANNELS = 1
 TARGET_WAV_FORMAT = "wav"
 DEFAULT_PITCH_FLOOR_HZ = 75.0
 DEFAULT_PITCH_CEILING_HZ = 300.0
-PARKINSON_MODEL_FILENAME = "parkinsons_model_smote.sav"
+PARKINSON_MODEL_FILENAME = "parkinsons_model_classic16.sav"
 
 
 class VoiceBiomarkerError(Exception):
