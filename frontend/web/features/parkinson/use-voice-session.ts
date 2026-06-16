@@ -13,7 +13,11 @@ import {
 } from "@/lib/api";
 
 const POLLING_INTERVAL_MS = 2000;
-const POLLING_TIMEOUT_MS = 60000;
+// 120s en vez de 60s: margen para CPU compartida/lenta del plan free de Render
+// (y para el cold-start del free tier tras inactividad). Ver también la
+// optimización de compute_dfa en nonlinear_features.py, que era la causa
+// principal del timeout (vectorizada: ~2.5s -> ~0.02s por toma).
+const POLLING_TIMEOUT_MS = 120000;
 
 // Clasificación de estados de una toma.
 // El pipeline pasa por estados intermedios (uploaded, processing, quality_checked,

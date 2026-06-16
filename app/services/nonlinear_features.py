@@ -48,14 +48,22 @@ def compute_dfa(signal: np.ndarray) -> float:
             continue
 
         y_cut = y[: n_segments * w].reshape(n_segments, w)
-        t = np.arange(w)
+        t = np.arange(w, dtype=np.float64)
 
-        rms_vals = []
-        for seg in y_cut:
-            coeff = np.polyfit(t, seg, 1)
-            trend = coeff[0] * t + coeff[1]
-            detrended = seg - trend
-            rms_vals.append(np.sqrt(np.mean(detrended ** 2)))
+        # Regresión lineal por segmento vectorizada (forma cerrada de OLS),
+        # equivalente a llamar np.polyfit(t, seg, 1) por fila pero sin el
+        # loop de Python — con ventanas pequeñas hay miles de segmentos y
+        # el loop por-fila dominaba el tiempo de extracción (~2.5s de los
+        # ~2.6s de todas las features no lineales en un audio de 6s).
+        t_mean = t.mean()
+        t_centered = t - t_mean
+        denom = np.sum(t_centered ** 2)
+        y_mean = y_cut.mean(axis=1)
+        slope = (y_cut @ t_centered) / denom
+        intercept = y_mean - slope * t_mean
+        trend = slope[:, None] * t[None, :] + intercept[:, None]
+        detrended = y_cut - trend
+        rms_vals = np.sqrt(np.mean(detrended ** 2, axis=1))
 
         f_w = float(np.sqrt(np.mean(np.square(rms_vals))))
         if np.isfinite(f_w) and f_w > 0:
